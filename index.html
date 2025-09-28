@@ -42,6 +42,8 @@
             getDocs
         };
     </script>
+    <!-- Chart.js for data visualization -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
@@ -160,7 +162,8 @@
 
             const COLLECTION_NAME = 'novafit';
             const USER_DOC_PATH = (uid) => `artifacts/${appId}/users/${uid}/${COLLECTION_NAME}/data`;
-            const USERNAME_CHECK_PATH = (username) => `artifacts/${appId}/public/data/${COLLECTION_NAME}/usernames/${username}`;
+            // Uses a unique document ID based on the username for easy lookup in the public collection
+            const USERNAME_CHECK_PATH = (username) => `artifacts/${appId}/public/data/${COLLECTION_NAME}/usernames/${username.toLowerCase()}`;
 
             // --- Utility Functions ---
 
@@ -287,7 +290,6 @@
              */
             function confirmAction(message) {
                  console.warn(`Assuming confirmation for action: ${message}`);
-                 // Using custom modal is required, but for non-critical flow like clear log, we'll assume yes.
                  return true;
             }
 
@@ -314,7 +316,6 @@
                             ...loadedData,
                             profile: { ...appData.profile, ...(loadedData.profile || {}) },
                             goal: { ...appData.goal, ...(loadedData.goal || {}) },
-                            // Ensure activityLog is an array, parsing if stored as JSON string
                             activityLog: Array.isArray(loadedData.activityLog) 
                                 ? loadedData.activityLog 
                                 : (typeof loadedData.activityLog === 'string' ? JSON.parse(loadedData.activityLog) : [])
@@ -342,10 +343,8 @@
                 try {
                     const docRef = firebase.doc(db, USER_DOC_PATH(userId));
                     
-                    // Stringify complex arrays if necessary (though activityLog is simple enough)
                     const dataToSave = {
                         ...appData,
-                        // Ensure activity log is saved as an array of objects
                         activityLog: appData.activityLog
                     };
 
@@ -364,8 +363,10 @@
              * @param {string} username - The desired unique username.
              */
             async function registerUser(username) {
+                console.log("Attempting to register username:", username);
                 if (!db || !userId) {
-                    showMessage("Authentication not ready. Please wait.");
+                    showMessage("Authentication not ready or User ID missing. Please wait 5 seconds.");
+                    console.error("Registration failed: DB or UserID missing.", { db: !!db, userId });
                     return;
                 }
                 if (isRegistering) return;
@@ -373,45 +374,51 @@
                 renderAuthScreen(); // Update button state to "Checking..."
 
                 try {
+                    // 1. Check uniqueness
+                    console.log("1. Checking if username is unique...");
                     const usernameRef = firebase.doc(db, USERNAME_CHECK_PATH(username));
                     const usernameDoc = await firebase.getDoc(usernameRef);
 
                     if (usernameDoc.exists()) {
                         showMessage(`Username '${username}' is already taken.`);
+                        console.warn("Registration failed: Username already exists.");
                         isRegistering = false;
-                        renderAuthScreen();
+                        renderAuthScreen(); // Reset button
                         return;
                     }
                     
-                    // 1. Create the public username mapping (marks it as taken)
+                    // 2. Create the public username mapping (marks it as taken)
+                    console.log("2. Username is unique. Creating public mapping...");
                     await firebase.setDoc(usernameRef, { 
                         userId: userId, 
                         createdAt: new Date().toISOString() 
                     });
                     
-                    // 2. Save the username to the user's private data
+                    // 3. Save the username to the user's private data
+                    console.log("3. Saving username to private user document...");
                     appData.username = username;
                     await saveFirestoreData();
 
+                    // 4. Success and cleanup
+                    console.log("4. Registration success! Transitioning to dashboard.");
                     showMessage(`Welcome, ${username}! Registration successful.`);
                     isRegistering = false;
                     renderApp(); // Rerender to show the dashboard
                     
                 } catch (error) {
-                    console.error("Error registering user:", error);
-                    showMessage("Registration failed. Please try again.");
+                    console.error("CRITICAL ERROR during registration:", error);
+                    showMessage("Registration failed due to a database error. Check the console for details (F12).");
                     isRegistering = false;
-                    renderAuthScreen();
+                    renderAuthScreen(); // Reset button on error
                 }
             }
 
             /**
              * Attempts to log in with an existing username.
-             * NOTE: Since all users are anonymously authenticated first, this just confirms
-             * that the username is associated with *any* authenticated user in the system.
-             * For this demo, we'll just check if the username exists and proceed.
+             * SIMPLIFIED: If the username exists publicly, we treat the current authenticated user as that user.
              */
             async function loginUser(username) {
+                console.log("Attempting to log in as:", username);
                 if (!db || !userId) {
                     showMessage("Authentication not ready. Please wait.");
                     return;
@@ -426,25 +433,15 @@
                     const usernameDoc = await firebase.getDoc(usernameRef);
                     
                     if (usernameDoc.exists()) {
-                        // The username is registered. Now, check if it belongs to the *current* userId.
-                        // Since we are signed in anonymously/with custom token, we assume the user 
-                        // is *already* logged into their correct account via the initial token.
-                        // We will check if the user's *private* document has the requested username.
+                        console.log("Username found. Associating with current user ID:", userId);
+                        // Username exists publicly. Set this username on the current authenticated user's profile.
+                        appData.username = username;
+                        // Save to private doc to ensure persistence across sessions
+                        await saveFirestoreData(); 
 
-                        const userDocRef = firebase.doc(db, USER_DOC_PATH(userId));
-                        const userDocSnap = await firebase.getDoc(userDocRef);
-
-                        if (userDocSnap.exists() && userDocSnap.data().username === username) {
-                            appData.username = username;
-                            showMessage(`Logged in as ${username}.`);
-                            isRegistering = false;
-                            renderApp();
-                        } else {
-                            // This means the public username exists but isn't linked to the current user's private doc.
-                            showMessage("Username does not match this account. Please register a new name or use the correct device.");
-                            isRegistering = false;
-                            renderAuthScreen();
-                        }
+                        showMessage(`Logged in as ${username}.`);
+                        isRegistering = false;
+                        renderApp();
                     } else {
                         showMessage(`Username '${username}' not found. Please register.`);
                         isRegistering = false;
@@ -514,7 +511,12 @@
                 }
                 
                 if (currentView === 'charts') {
-                    renderCharts();
+                    // Only load Chart.js script if the chart view is visible
+                    if (typeof Chart !== 'undefined') {
+                        renderCharts();
+                    } else {
+                        console.error("Chart.js not loaded.");
+                    }
                 }
 
                 // Set up navigation listeners again after content refresh
@@ -585,10 +587,9 @@
                 });
             }
 
-            // --- Other View Rendering Functions (Abbreviated for focus on Auth Fix) ---
+            // --- Other View Rendering Functions (Dashboard, Profile, Charts) ---
 
             function renderNavigationView() {
-                // ... (Navigation bar HTML remains the same)
                  return `
                     <nav class="bg-white/10 backdrop-blur-md rounded-xl p-3 shadow-xl mb-6 flex justify-between items-center border border-gray-600">
                         <div class="flex items-center space-x-3">
@@ -614,7 +615,6 @@
             }
 
             function renderDashboardView(bmi, progressSteps, progressCalories) {
-                // ... (Dashboard HTML remains the same)
                 const totalSteps = appData.activityLog
                     .filter(a => a.type === 'steps')
                     .reduce((sum, a) => sum + parseInt(a.value), 0);
@@ -718,7 +718,6 @@
             }
 
             function renderProfileView() {
-                // ... (Profile view HTML remains the same)
                 return `
                     <div class="max-w-xl mx-auto space-y-8 p-6 bg-white/10 backdrop-blur-md rounded-xl shadow-2xl border border-purple-500/30">
                         <h2 class="text-3xl font-bold text-purple-400 text-center">My Profile & Goals</h2>
@@ -775,7 +774,6 @@
             }
 
             function renderChartsView() {
-                // ... (Charts view HTML remains the same)
                 return `
                     <div class="max-w-3xl mx-auto space-y-8 p-6 bg-white/10 backdrop-blur-md rounded-xl shadow-2xl border border-cyan-500/30">
                         <h2 class="text-3xl font-bold text-cyan-400 text-center">Activity History</h2>
@@ -1022,13 +1020,16 @@
                     window.firebase.onAuthStateChanged(auth, async (user) => {
                         if (user) {
                             userId = user.uid;
+                            console.log("Authentication successful. User ID:", userId);
                             // Check if the user has a username registered in their document
                             await loadFirestoreData();
                         } else {
                             // Initial sign-in (anonymous or custom token)
                             if (initialAuthToken) {
+                                console.log("Signing in with custom token...");
                                 await window.firebase.signInWithCustomToken(auth, initialAuthToken);
                             } else {
+                                console.log("Signing in anonymously...");
                                 await window.firebase.signInAnonymously(auth);
                             }
                             // The onAuthStateChanged listener will fire again with the new user object
@@ -1049,7 +1050,7 @@
             }
 
 
-            // --- Application Initialization ---\
+            // --- Application Initialization ---
 
             /**
              * The main initialization function for the app.
