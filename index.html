@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NovaFit Tracker - Firebase Auth Setup</title>
+    <title>NovaFit Tracker - Firebase</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
@@ -23,6 +23,43 @@
             50% { background-position: 100% 50%; }
             100% { background-position: 0% 50%; }
         }
+        
+        /* --- Particle System Styles --- */
+        #particles-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 0; /* Ensure particles are behind content */
+            overflow: hidden;
+        }
+        .particle {
+            position: absolute;
+            width: 4px;
+            height: 4px;
+            border-radius: 50%;
+            background: rgba(126, 34, 206, 0.6); /* Purple */
+            animation: glow 1s infinite alternate, flow var(--duration) ease-in-out infinite both;
+            box-shadow: 0 0 5px rgba(126, 34, 206, 0.8), 0 0 10px rgba(6, 182, 212, 0.5); /* Blue glow */
+            opacity: 0;
+        }
+
+        @keyframes glow {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        @keyframes flow {
+            0%, 100% {
+                transform: translate(0, 0) scale(1);
+            }
+            50% {
+                transform: translate(var(--flow-x, 0), var(--flow-y, 0)) scale(1.2);
+            }
+        }
+        
         /* Custom style for the circular progress bar */
         .progress-ring__circle {
             transition: stroke-dashoffset 0.35s;
@@ -40,19 +77,29 @@
         #fab:hover {
             transform: scale(1.05);
         }
+        /* Style for the custom dialog/modal */
+        dialog {
+            border: none;
+        }
+        dialog::backdrop {
+            background-color: rgba(0, 0, 0, 0.7);
+        }
     </style>
 </head>
 <body class="neon-gradient text-white flex flex-col items-center p-4 min-h-screen">
 
-    <!-- Header & User ID Display (Updated) -->
-    <header class="w-full max-w-4xl flex justify-between items-center py-4 px-2">
+    <!-- Particle Container (Z-index 0) -->
+    <div id="particles-container"></div>
+
+    <!-- Header & User ID Display (Z-index 10) -->
+    <header class="w-full max-w-4xl flex justify-between items-center py-4 px-2 z-10">
         <h1 class="text-3xl font-extrabold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-blue-300">NovaFit</h1>
         <div id="user-info" class="text-xs text-gray-400 p-2 bg-gray-900/50 rounded-lg shadow-inner">
-            <span id="user-id-display">Connecting...</span>
+            <span id="user-id-display" class="font-mono">Connecting...</span>
         </div>
     </header>
 
-    <main id="app-container" class="w-full max-w-4xl p-2 space-y-6">
+    <main id="app-container" class="w-full max-w-4xl p-2 space-y-6 z-10">
 
         <!-- BMI and Calorie Goal Card (Main Dashboard) -->
         <section id="dashboard" class="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -95,24 +142,24 @@
             <h2 class="text-xl font-semibold mb-4 text-teal-300">Today's Activity Log</h2>
             <div id="activity-log" class="space-y-3 max-h-60 overflow-y-auto pr-2">
                 <!-- Log entries will be inserted here -->
-                <p id="empty-log-message" class="text-gray-500 italic">No activities logged yet.</p>
+                <p id="empty-log-message" class="text-gray-500 italic">No activities logged yet. Ensure Firebase is connected.</p>
             </div>
             <button id="clear-log-btn" class="mt-4 p-2 bg-red-600 hover:bg-red-700 rounded-lg text-white font-medium transition duration-200 shadow-md hidden">Clear Today's Log</button>
         </section>
 
     </main>
     
-    <!-- Floating Action Button (FAB) for Manual Entry -->
-    <button id="fab" onclick="document.getElementById('entry-modal').showModal()" class="p-4 rounded-full bg-green-500 text-white shadow-lg hover:bg-green-600">
+    <!-- Floating Action Button (FAB) for Manual Entry (Z-index 20) -->
+    <button id="fab" onclick="document.getElementById('entry-modal').showModal()" class="p-4 rounded-full bg-green-500 text-white shadow-lg hover:bg-green-600 z-20">
         <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
         </svg>
     </button>
 
-    <!-- Modals -->
+    <!-- Modals (Z-index 30) -->
 
     <!-- Manual Entry Modal -->
-    <dialog id="entry-modal" class="p-6 rounded-xl shadow-2xl backdrop-blur-md bg-gray-800/90 text-white border border-green-500/30 w-11/12 md:w-1/3">
+    <dialog id="entry-modal" class="p-6 rounded-xl shadow-2xl backdrop-blur-md bg-gray-800/90 text-white border border-green-500/30 w-11/12 md:w-1/3 z-30">
         <h3 class="text-2xl font-bold mb-4 text-green-400">Log Activity</h3>
         <form id="entry-form" class="space-y-4">
             <div>
@@ -131,7 +178,7 @@
     </dialog>
 
     <!-- Profile/Goal Modal -->
-    <dialog id="profile-modal" class="p-6 rounded-xl shadow-2xl backdrop-blur-md bg-gray-800/90 text-white border border-blue-500/30 w-11/12 md:w-1/3">
+    <dialog id="profile-modal" class="p-6 rounded-xl shadow-2xl backdrop-blur-md bg-gray-800/90 text-white border border-blue-500/30 w-11/12 md:w-1/3 z-30">
         <h3 class="text-2xl font-bold mb-4 text-blue-400">Edit Profile & Goals</h3>
         
         <form id="profile-form" class="space-y-4 mb-6 p-4 border border-gray-700 rounded-lg">
@@ -162,7 +209,7 @@
     </dialog>
 
     <script type="module">
-        // --- Firebase Imports (NEW) ---
+        // --- Firebase Imports ---
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
@@ -171,10 +218,10 @@
         // Set Firebase Log Level for debugging in console
         setLogLevel('debug');
 
-        // --- Global Firebase and App State (NEW) ---
+        // --- Global Firebase and App State ---
         let db, auth, app;
         let userId = null; // Current user ID
-        let isAuthReady = false; // Flag to ensure we don't try to access Firestore before auth is complete
+        let isAuthReady = false; // Flag to ensure we only run Firestore ops when auth is confirmed
         
         // Retrieve mandatory environment variables
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
@@ -192,11 +239,11 @@
             activityLog: [] // [{ id: timestamp, item: string, calories: number, date: yyyy-mm-dd }]
         };
 
-        // --- Firebase/Firestore Placeholder Functions (REPLACED loadData/saveData) ---
+        // --- Firebase Data Persistence Functions ---
 
         /**
-         * The base path for private user data in Firestore.
-         * @returns {string} The path string.
+         * Generates the Firestore document path for the current user's private data.
+         * @returns {string | null} The Firestore path string or null if userId is not set.
          */
         function getUserDocumentPath() {
             if (!userId) {
@@ -208,10 +255,9 @@
         }
 
         /**
-         * STUB: Placeholder function to save data to Firestore.
-         * Will be implemented to replace localStorage.setItem() calls.
+         * Saves the current appData state to Firestore.
          */
-        async function saveUserDataToFirestore(data) {
+        async function saveUserDataToFirestore() {
             if (!isAuthReady || !userId) {
                 console.warn("Auth not ready or user not logged in. Cannot save data.");
                 return;
@@ -221,17 +267,16 @@
             if (!docPath) return;
 
             try {
-                // TODO: Implement the Firestore setDoc call here in the NEXT step
-                console.log("STUB: Saving data for user:", userId);
-                // await setDoc(doc(db, docPath), data);
+                // Use setDoc to replace the entire document content
+                await setDoc(doc(db, docPath), appData);
+                console.log("Data saved successfully for user:", userId);
             } catch (error) {
                 console.error("Error saving data:", error);
             }
         }
 
         /**
-         * STUB: Placeholder function to set up a real-time listener for user data.
-         * Will be implemented to replace localStorage.getItem() on load.
+         * Sets up a real-time listener for the user's data document in Firestore.
          */
         function setupRealtimeListener() {
             if (!isAuthReady || !userId) {
@@ -242,20 +287,29 @@
             const docPath = getUserDocumentPath();
             if (!docPath) return;
 
-            // TODO: Implement the Firestore onSnapshot listener here in the NEXT step
-            console.log("STUB: Setting up real-time listener for user:", userId);
-            /*
+            // onSnapshot provides real-time updates to appData
             onSnapshot(doc(db, docPath), (docSnapshot) => {
                 if (docSnapshot.exists()) {
-                    // Update appData and render
+                    const remoteData = docSnapshot.data();
+                    
+                    // Update appData with fetched data, ensuring activityLog is an array
+                    appData = {
+                        profile: { ...appData.profile, ...remoteData.profile },
+                        activityLog: Array.isArray(remoteData.activityLog) ? remoteData.activityLog : []
+                    };
+                    console.log("Data loaded from Firestore (Real-time update).");
                 } else {
-                    // Initialize with defaults if no doc exists
+                    console.log("No data found for user. Initializing and saving defaults.");
+                    // If no document exists, save the default state to Firestore immediately
+                    saveUserDataToFirestore();
                 }
+                renderApp(); // Render UI after data is updated/loaded
+            }, (error) => {
+                console.error("Error setting up real-time listener:", error);
             });
-            */
         }
         
-        // --- Core Application Logic (MOSTLY UNCHANGED) ---
+        // --- Core Application Logic ---
 
         /**
          * Calculates BMI from weight (kg) and height (cm).
@@ -301,7 +355,6 @@
             
             const progressCircle = document.getElementById('calorie-progress-circle');
             
-            // FIX: Added null check for progressCircle before accessing its style property
             if (progressCircle) {
                 progressCircle.style.strokeDasharray = `${circumference}, ${circumference}`;
                 progressCircle.style.strokeDashoffset = dashoffset;
@@ -324,11 +377,9 @@
             if (logContainer) logContainer.innerHTML = '';
             
             if (todayEntries.length === 0) {
-                // FIX: Added null checks for emptyLogMessage and clearLogBtn
                 if (emptyLogMessage) emptyLogMessage.style.display = 'block';
                 if (clearLogBtn) clearLogBtn.classList.add('hidden');
             } else {
-                // FIX: Added null checks for emptyLogMessage and clearLogBtn
                 if (emptyLogMessage) emptyLogMessage.style.display = 'none';
                 if (clearLogBtn) clearLogBtn.classList.remove('hidden');
 
@@ -362,12 +413,10 @@
 
         /**
          * Simple confirm action wrapper (used to replace window.confirm).
-         * @param {string} message - The message to display.
          * @returns {boolean} Returns true to allow the action to proceed.
          */
         function confirmAction(message) {
              console.warn(`Assuming confirmation for action: ${message}`);
-             // In a standard browser, use: return window.confirm(message);
              return true; 
         }
 
@@ -382,8 +431,7 @@
             appData.profile.weight = weight;
             appData.profile.height = height;
             
-            saveUserDataToFirestore(appData); // Now calls the Firestore stub
-            renderApp();
+            saveUserDataToFirestore(); // Calls Firestore save
             document.getElementById('profile-modal').close();
         }
 
@@ -396,8 +444,7 @@
             
             appData.profile.goalCalories = goal;
             
-            saveUserDataToFirestore(appData); // Now calls the Firestore stub
-            renderApp();
+            saveUserDataToFirestore(); // Calls Firestore save
             document.getElementById('profile-modal').close();
         }
 
@@ -419,8 +466,7 @@
                 };
                 appData.activityLog.push(newEntry);
                 
-                saveUserDataToFirestore(appData); // Now calls the Firestore stub
-                renderApp();
+                saveUserDataToFirestore(); // Calls Firestore save
                 
                 // Clear form and close modal
                 document.getElementById('entry-form').reset();
@@ -436,8 +482,7 @@
             
             if (confirmAction('Are you sure you want to remove this entry?')) {
                 appData.activityLog = appData.activityLog.filter(entry => entry.id !== id);
-                saveUserDataToFirestore(appData); // Now calls the Firestore stub
-                renderApp();
+                saveUserDataToFirestore(); // Calls Firestore save
             }
         }
 
@@ -448,8 +493,43 @@
             if (confirmAction('Are you sure you want to clear ALL log entries for today?')) {
                 const today = new Date().toISOString().split('T')[0];
                 appData.activityLog = appData.activityLog.filter(entry => entry.date !== today);
-                saveUserDataToFirestore(appData); // Now calls the Firestore stub
-                renderApp();
+                saveUserDataToFirestore(); // Calls Firestore save
+            }
+        }
+
+        // --- Particle System Logic (Kept from novafit35.html) ---
+
+        function generateParticles() {
+            const container = document.getElementById('particles-container');
+            if (!container) return;
+
+            const numParticles = 30; 
+            const duration = 15; // Animation duration in seconds (randomized)
+
+            for (let i = 0; i < numParticles; i++) {
+                const particle = document.createElement('div');
+                particle.className = 'particle';
+                
+                // Random position
+                particle.style.left = `${Math.random() * 100}vw`;
+                particle.style.top = `${Math.random() * 100}vh`;
+
+                // Random size (2px to 5px)
+                const size = Math.random() * 3 + 2; 
+                particle.style.width = `${size}px`;
+                particle.style.height = `${size}px`;
+
+                // Random duration and delay for the flow animation
+                particle.style.setProperty('--duration', `${Math.random() * 10 + duration}s`);
+                particle.style.animationDelay = `-${Math.random() * duration}s, -${Math.random() * duration}s`;
+
+                // Random flow offsets (for the CSS variable in the flow keyframe)
+                const flowX = Math.random() * 200 - 100;
+                const flowY = Math.random() * 200 - 100;
+                particle.style.setProperty('--flow-x', `${flowX}px`);
+                particle.style.setProperty('--flow-y', `${flowY}px`);
+
+                container.appendChild(particle);
             }
         }
 
@@ -475,7 +555,7 @@
             document.getElementById('clear-log-btn').onclick = handleClearLog;
         }
 
-        // --- Firebase Initialization and Auth (NEW) ---
+        // --- Firebase Initialization and Auth ---
 
         /**
          * Initializes Firebase and authenticates the user.
@@ -493,7 +573,7 @@
                 db = getFirestore(app);
                 auth = getAuth(app);
                 
-                // Check for custom token and sign in
+                // Sign in process
                 if (initialAuthToken) {
                     await signInWithCustomToken(auth, initialAuthToken);
                 } else {
@@ -501,19 +581,18 @@
                     await signInAnonymously(auth);
                 }
 
-                // Once signed in, get the user ID and mark auth as ready
+                // Listener to get user ID and start data listener
                 auth.onAuthStateChanged(user => {
                     if (user) {
                         userId = user.uid;
                         isAuthReady = true;
                         
                         // Display the full user ID
-                        document.getElementById('user-id-display').textContent = `User ID: ${userId}`;
+                        const userIdDisplay = document.getElementById('user-id-display');
+                        if (userIdDisplay) userIdDisplay.textContent = `User ID: ${userId}`;
                         
-                        // Proceed to setup data listener
-                        setupRealtimeListener();
+                        setupRealtimeListener(); // Start data fetching/sync
                     } else {
-                        // Handle sign out if necessary
                         console.log("User logged out or failed to sign in.");
                         document.getElementById('user-id-display').textContent = 'Guest (Not Signed In)';
                     }
@@ -526,14 +605,13 @@
         }
 
 
-        // --- Application Initialization (UPDATED) ---\
+        // --- Application Initialization ---
 
         /**
          * The main initialization function for the app.
          */
         function initApp() {
-            // NOTE: Replaced loadData() with setupFirebase()
-            setupFirebase(); // Start Firebase and Auth setup
+            setupFirebase(); // Start Firebase and Auth setup (replaces loadData)
 
             // Setup DOM event listeners for forms and buttons
             setupProfileForms();
@@ -541,10 +619,9 @@
             setupManualEntry();
             setupGoalForm();
             setupClearLog();
+            generateParticles(); // Start the background animation
             
-            // The first renderApp() will run once Firebase is ready and data is loaded/initialized.
-            // For now, run an initial render with defaults so the UI isn't empty.
-            renderApp();
+            // The initial render will be handled by the onSnapshot listener once data is loaded.
         }
 
         // Initialize the application when the window loads
