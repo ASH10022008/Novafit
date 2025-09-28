@@ -718,8 +718,17 @@
 
         /**
          * Handles navigation between different views.
+         * MODIFIED: Eliminates recursion and explicitly forces 'profile-view' when logged out.
          */
         function handleNavigation(targetViewId) {
+            
+            // If not logged in, force navigation to the profile view, 
+            // regardless of what link was clicked or what the default was.
+            if (!activeProfileId) {
+                targetViewId = 'profile-view';
+            }
+            
+            // 1. Set the active view section
             document.querySelectorAll('.view-section').forEach(section => {
                 section.classList.remove('active');
                 if (section.id === targetViewId) {
@@ -727,31 +736,27 @@
                 }
             });
 
+            // 2. Set the active nav link and handle disabled state
             document.querySelectorAll('.nav-link').forEach(link => {
                 link.classList.remove('active');
+                
+                const isProfileLink = link.dataset.view === 'profile-view';
+
                 if (link.dataset.view === targetViewId) {
                     link.classList.add('active');
                 }
-            });
 
-            // Disable nav links if no user is logged in, except the Profile link
-            if (!activeProfileId) {
-                document.querySelectorAll('.nav-link:not(#nav-profile)').forEach(link => {
+                // If not logged in, disable all links EXCEPT profile
+                if (!activeProfileId && !isProfileLink) {
                     link.disabled = true;
                     link.classList.add('opacity-50', 'cursor-not-allowed');
-                });
-                // Force navigation to profile view if a restricted view is selected without a profile
-                if (targetViewId !== 'profile-view') {
-                    // This prevents the empty dashboard/analytics view from showing when not logged in
-                    handleNavigation('profile-view');
-                }
-            } else {
-                document.querySelectorAll('.nav-link').forEach(link => {
+                } else {
                     link.disabled = false;
                     link.classList.remove('opacity-50', 'cursor-not-allowed');
-                });
-            }
+                }
+            });
         }
+
 
         /**
          * Formats time from minutes into Hh Mm string.
@@ -1136,6 +1141,7 @@
         
         /**
          * The main rendering function, called after data is loaded or changed.
+         * MODIFIED: Uses an explicit default view based on activeProfileId status.
          */
         function renderApp() {
             renderProfileView(); 
@@ -1161,8 +1167,9 @@
                 document.getElementById('analytics-login-prompt').classList.remove('hidden');
             }
             
-            // Re-enable/disable nav links and set initial view
-            handleNavigation(document.querySelector('.nav-link.active')?.dataset.view || 'dashboard-view');
+            // Set the view. If logged in, default to dashboard. If logged out, default to profile.
+            const defaultView = activeProfileId ? 'dashboard-view' : 'profile-view';
+            handleNavigation(document.querySelector('.nav-link.active')?.dataset.view || defaultView);
         }
 
 
@@ -1200,7 +1207,10 @@
         function setupNavigation() {
             document.querySelectorAll('.nav-link').forEach(link => {
                 link.addEventListener('click', (e) => {
-                    handleNavigation(e.target.dataset.view);
+                    // Check if the link is disabled before allowing navigation
+                    if (!e.currentTarget.disabled) {
+                        handleNavigation(e.target.dataset.view);
+                    }
                 });
             });
         }
