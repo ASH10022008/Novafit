@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NovaFit Tracker - Firebase Setup</title>
+    <title>NovaFit Tracker - Firebase Auth Setup</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
@@ -44,7 +44,7 @@
 </head>
 <body class="neon-gradient text-white flex flex-col items-center p-4 min-h-screen">
 
-    <!-- Header & User ID Display -->
+    <!-- Header & User ID Display (Updated) -->
     <header class="w-full max-w-4xl flex justify-between items-center py-4 px-2">
         <h1 class="text-3xl font-extrabold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-blue-300">NovaFit</h1>
         <div id="user-info" class="text-xs text-gray-400 p-2 bg-gray-900/50 rounded-lg shadow-inner">
@@ -162,7 +162,7 @@
     </dialog>
 
     <script type="module">
-        // Firebase Imports
+        // --- Firebase Imports (NEW) ---
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
@@ -171,7 +171,7 @@
         // Set Firebase Log Level for debugging in console
         setLogLevel('debug');
 
-        // --- Global Firebase and App State ---
+        // --- Global Firebase and App State (NEW) ---
         let db, auth, app;
         let userId = null; // Current user ID
         let isAuthReady = false; // Flag to ensure we don't try to access Firestore before auth is complete
@@ -183,7 +183,6 @@
 
 
         // --- Application Data Model ---
-        // The data structure that will be saved to and loaded from Firestore
         let appData = {
             profile: {
                 weight: 0, // kg
@@ -193,7 +192,7 @@
             activityLog: [] // [{ id: timestamp, item: string, calories: number, date: yyyy-mm-dd }]
         };
 
-        // --- Firebase/Firestore Placeholder Functions ---
+        // --- Firebase/Firestore Placeholder Functions (REPLACED loadData/saveData) ---
 
         /**
          * The base path for private user data in Firestore.
@@ -209,8 +208,8 @@
         }
 
         /**
-         * Placeholder function to save data to Firestore.
-         * The actual implementation will be added in the next step.
+         * STUB: Placeholder function to save data to Firestore.
+         * Will be implemented to replace localStorage.setItem() calls.
          */
         async function saveUserDataToFirestore(data) {
             if (!isAuthReady || !userId) {
@@ -222,8 +221,8 @@
             if (!docPath) return;
 
             try {
-                // TODO: Implement the Firestore setDoc call here in the next step
-                console.log("STUB: Saving data for user:", userId, "Data:", data);
+                // TODO: Implement the Firestore setDoc call here in the NEXT step
+                console.log("STUB: Saving data for user:", userId);
                 // await setDoc(doc(db, docPath), data);
             } catch (error) {
                 console.error("Error saving data:", error);
@@ -231,8 +230,8 @@
         }
 
         /**
-         * Placeholder function to set up a real-time listener for user data.
-         * The actual implementation will be added in the next step.
+         * STUB: Placeholder function to set up a real-time listener for user data.
+         * Will be implemented to replace localStorage.getItem() on load.
          */
         function setupRealtimeListener() {
             if (!isAuthReady || !userId) {
@@ -243,7 +242,7 @@
             const docPath = getUserDocumentPath();
             if (!docPath) return;
 
-            // TODO: Implement the Firestore onSnapshot listener here in the next step
+            // TODO: Implement the Firestore onSnapshot listener here in the NEXT step
             console.log("STUB: Setting up real-time listener for user:", userId);
             /*
             onSnapshot(doc(db, docPath), (docSnapshot) => {
@@ -256,7 +255,7 @@
             */
         }
         
-        // --- Core Application Logic (Unchanged) ---
+        // --- Core Application Logic (MOSTLY UNCHANGED) ---
 
         /**
          * Calculates BMI from weight (kg) and height (cm).
@@ -299,29 +298,39 @@
             document.getElementById('consumed-calories').textContent = totalConsumed;
             document.getElementById('remaining-calories').textContent = Math.max(0, remaining);
             document.getElementById('calorie-percentage').textContent = `${Math.round(percentage)}%`;
-            document.getElementById('calorie-progress-circle').style.strokeDasharray = `${circumference}, ${circumference}`;
-            document.getElementById('calorie-progress-circle').style.strokeDashoffset = dashoffset;
             
-            // Set circle color based on progress
-            const circle = document.getElementById('calorie-progress-circle');
-            if (remaining < 0) {
-                circle.setAttribute('stroke', '#ef4444'); // red
-            } else if (percentage === 100) {
-                circle.setAttribute('stroke', '#10b981'); // emerald/green
-            } else {
-                circle.setAttribute('stroke', '#8b5cf6'); // purple
+            const progressCircle = document.getElementById('calorie-progress-circle');
+            
+            // FIX: Added null check for progressCircle before accessing its style property
+            if (progressCircle) {
+                progressCircle.style.strokeDasharray = `${circumference}, ${circumference}`;
+                progressCircle.style.strokeDashoffset = dashoffset;
+                
+                // Set circle color based on progress
+                if (remaining < 0) {
+                    progressCircle.setAttribute('stroke', '#ef4444'); // red
+                } else if (percentage >= 100) {
+                    progressCircle.setAttribute('stroke', '#10b981'); // emerald/green
+                } else {
+                    progressCircle.setAttribute('stroke', '#8b5cf6'); // purple
+                }
             }
 
             // 3. Activity Log
             const logContainer = document.getElementById('activity-log');
-            logContainer.innerHTML = '';
+            const emptyLogMessage = document.getElementById('empty-log-message');
+            const clearLogBtn = document.getElementById('clear-log-btn');
+            
+            if (logContainer) logContainer.innerHTML = '';
             
             if (todayEntries.length === 0) {
-                document.getElementById('empty-log-message').style.display = 'block';
-                document.getElementById('clear-log-btn').classList.add('hidden');
+                // FIX: Added null checks for emptyLogMessage and clearLogBtn
+                if (emptyLogMessage) emptyLogMessage.style.display = 'block';
+                if (clearLogBtn) clearLogBtn.classList.add('hidden');
             } else {
-                document.getElementById('empty-log-message').style.display = 'none';
-                document.getElementById('clear-log-btn').classList.remove('hidden');
+                // FIX: Added null checks for emptyLogMessage and clearLogBtn
+                if (emptyLogMessage) emptyLogMessage.style.display = 'none';
+                if (clearLogBtn) clearLogBtn.classList.remove('hidden');
 
                 todayEntries.sort((a, b) => b.id - a.id); // Show newest first
                 
@@ -339,7 +348,7 @@
                             </button>
                         </div>
                     `;
-                    logContainer.appendChild(logItem);
+                    if (logContainer) logContainer.appendChild(logItem);
                 });
                 
                 // Re-attach listeners for the new remove buttons
@@ -349,7 +358,7 @@
             }
         }
 
-        // --- Handlers ---
+        // --- Handlers (UPDATED to call saveUserDataToFirestore) ---
 
         /**
          * Simple confirm action wrapper (used to replace window.confirm).
@@ -373,7 +382,7 @@
             appData.profile.weight = weight;
             appData.profile.height = height;
             
-            saveUserDataToFirestore(appData); // Use the new save function
+            saveUserDataToFirestore(appData); // Now calls the Firestore stub
             renderApp();
             document.getElementById('profile-modal').close();
         }
@@ -387,7 +396,7 @@
             
             appData.profile.goalCalories = goal;
             
-            saveUserDataToFirestore(appData); // Use the new save function
+            saveUserDataToFirestore(appData); // Now calls the Firestore stub
             renderApp();
             document.getElementById('profile-modal').close();
         }
@@ -403,14 +412,14 @@
 
             if (item && calories > 0) {
                 const newEntry = {
-                    id: Date.now(), // Unique ID for key/removal
+                    id: Date.now(), 
                     item: item,
                     calories: calories,
                     date: today
                 };
                 appData.activityLog.push(newEntry);
                 
-                saveUserDataToFirestore(appData); // Use the new save function
+                saveUserDataToFirestore(appData); // Now calls the Firestore stub
                 renderApp();
                 
                 // Clear form and close modal
@@ -427,7 +436,7 @@
             
             if (confirmAction('Are you sure you want to remove this entry?')) {
                 appData.activityLog = appData.activityLog.filter(entry => entry.id !== id);
-                saveUserDataToFirestore(appData); // Use the new save function
+                saveUserDataToFirestore(appData); // Now calls the Firestore stub
                 renderApp();
             }
         }
@@ -439,7 +448,7 @@
             if (confirmAction('Are you sure you want to clear ALL log entries for today?')) {
                 const today = new Date().toISOString().split('T')[0];
                 appData.activityLog = appData.activityLog.filter(entry => entry.date !== today);
-                saveUserDataToFirestore(appData); // Use the new save function
+                saveUserDataToFirestore(appData); // Now calls the Firestore stub
                 renderApp();
             }
         }
@@ -466,8 +475,7 @@
             document.getElementById('clear-log-btn').onclick = handleClearLog;
         }
 
-
-        // --- Firebase Initialization and Auth ---
+        // --- Firebase Initialization and Auth (NEW) ---
 
         /**
          * Initializes Firebase and authenticates the user.
@@ -499,7 +507,7 @@
                         userId = user.uid;
                         isAuthReady = true;
                         
-                        // Display the full user ID (required for multi-user apps)
+                        // Display the full user ID
                         document.getElementById('user-id-display').textContent = `User ID: ${userId}`;
                         
                         // Proceed to setup data listener
@@ -518,12 +526,13 @@
         }
 
 
-        // --- Application Initialization ---\
+        // --- Application Initialization (UPDATED) ---\
 
         /**
          * The main initialization function for the app.
          */
         function initApp() {
+            // NOTE: Replaced loadData() with setupFirebase()
             setupFirebase(); // Start Firebase and Auth setup
 
             // Setup DOM event listeners for forms and buttons
@@ -533,11 +542,8 @@
             setupGoalForm();
             setupClearLog();
             
-            // Apply initial dark mode styling to static cards
-            document.querySelector('.daily-goal-card').classList.add('bg-white/10', 'backdrop-blur-md', 'border-purple-500/30', 'border');
-            document.querySelector('.activity-log-card').classList.add('bg-white/10', 'backdrop-blur-md', 'border-blue-500/30', 'border');
-            
-            // Initial render with default/placeholder data until Firestore loads
+            // The first renderApp() will run once Firebase is ready and data is loaded/initialized.
+            // For now, run an initial render with defaults so the UI isn't empty.
             renderApp();
         }
 
