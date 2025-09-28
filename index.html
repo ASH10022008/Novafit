@@ -3,8 +3,46 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NovaFit Tracker - Modular Data</title>
+    <title>NovaFit Tracker - Dashboard</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Firebase SDK Imports -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { 
+            getAuth, 
+            signInAnonymously, 
+            signInWithCustomToken, 
+            onAuthStateChanged 
+        } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { 
+            getFirestore, 
+            doc, 
+            getDoc, 
+            setDoc, 
+            collection, 
+            query, 
+            where, 
+            getDocs 
+        } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        
+        // Expose Firebase services to the global scope for use in the main script
+        window.firebase = {
+            initializeApp,
+            getAuth, 
+            signInAnonymously, 
+            signInWithCustomToken, 
+            onAuthStateChanged,
+            getFirestore, 
+            doc, 
+            getDoc, 
+            setDoc, 
+            collection, 
+            query, 
+            where, 
+            getDocs
+        };
+    </script>
+
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
         body {
@@ -26,778 +64,1017 @@
         
         /* --- Particle System Styles --- */
         #particles-container {
-            position: fixed;
+            position: absolute;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
             pointer-events: none;
-            z-index: 0;
             overflow: hidden;
-        }
-        .particle {
-            position: absolute;
-            width: 4px;
-            height: 4px;
-            border-radius: 50%;
-            background: rgba(126, 34, 206, 0.6);
-            animation: glow 1s infinite alternate, flow var(--duration) ease-in-out infinite both;
-            box-shadow: 0 0 5px rgba(126, 34, 206, 0.8), 0 0 10px rgba(6, 182, 212, 0.5);
-            opacity: 0;
+            z-index: 0;
         }
 
-        @keyframes glow {
-            from { opacity: 0; }
-            to { opacity: 1; }
+        .particle {
+            position: absolute;
+            background: rgba(126, 34, 206, 0.6); /* Purple/Neon */
+            border-radius: 50%;
+            opacity: 0;
+            animation: flow ease-in-out infinite;
         }
 
         @keyframes flow {
-            0%, 100% {
-                transform: translate(0, 0) scale(1);
+            0% { 
+                transform: translate(0, 0) scale(0.5); 
+                opacity: 0;
             }
-            50% {
-                transform: translate(var(--flow-x, 0), var(--flow-y, 0)) scale(1.2);
+            5% { opacity: 1; }
+            95% { opacity: 0; }
+            100% { 
+                transform: translate(var(--flow-x), var(--flow-y)) scale(1.5);
+                opacity: 0;
             }
         }
         
         /* Custom style for the circular progress bar */
+        .progress-ring {
+            position: relative;
+            width: 120px;
+            height: 120px;
+        }
+
         .progress-ring__circle {
             transition: stroke-dashoffset 0.35s;
             transform: rotate(-90deg);
             transform-origin: 50% 50%;
         }
-        /* Style for the floating action button (FAB) */
-        #fab {
-            position: fixed;
-            bottom: 1.5rem;
-            right: 1.5rem;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
-            transition: transform 0.2s;
-        }
-        #fab:hover {
-            transform: scale(1.05);
-        }
-        /* Style for the custom dialog/modal */
-        dialog {
-            border: none;
-        }
-        dialog::backdrop {
-            background-color: rgba(0, 0, 0, 0.7);
-        }
-        .hidden-auth {
-            display: none !important;
+
+        /* Chart.js styles for dark mode */
+        .chart-container canvas {
+            background-color: transparent !important;
         }
     </style>
 </head>
-<body class="neon-gradient text-white flex flex-col items-center p-4 min-h-screen">
+<body class="neon-gradient text-white flex items-center justify-center min-h-screen p-4">
 
-    <!-- Particle Container (Z-index 0) -->
+    <!-- Particle Container -->
     <div id="particles-container"></div>
 
-    <!-- Header & User Info (Z-index 10) -->
-    <header class="w-full max-w-4xl flex justify-between items-center py-4 px-2 z-10">
-        <h1 class="text-3xl font-extrabold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-blue-300">NovaFit</h1>
-        <div id="user-info-area" class="flex items-center space-x-2 hidden-auth">
-             <!-- Username Display -->
-            <span id="username-display" class="font-bold text-lg text-green-300 bg-gray-900/50 p-2 rounded-lg shadow-inner">Guest</span>
-            <!-- Logout Button -->
-            <button id="logout-btn" class="text-sm text-gray-400 p-2 bg-gray-900/50 rounded-lg shadow-inner hover:bg-gray-800 transition duration-150">
-                Logout
-            </button>
-        </div>
-    </header>
-
-    <!-- --- AUTHENTICATION SCREEN (Hidden until needed) --- -->
-    <section id="auth-screen" class="w-full max-w-md flex flex-col items-center justify-center flex-grow z-10 hidden-auth">
-        <div class="p-8 rounded-xl shadow-2xl backdrop-blur-md bg-gray-800/90 border border-yellow-500/30 w-full text-center">
-            <h2 class="text-3xl font-bold mb-6 text-yellow-400">Welcome to NovaFit</h2>
-            <p class="text-gray-400 mb-6">Please login or register a unique username to sync your data across devices.</p>
-            
-            <form id="auth-form" class="space-y-4">
-                <div>
-                    <input type="text" id="username-input" required minlength="3" placeholder="Enter Unique Username" 
-                           class="w-full p-3 rounded-lg bg-gray-700 border border-gray-600 focus:border-yellow-500 text-white placeholder-gray-500">
-                </div>
-                
-                <p id="auth-message" class="text-sm h-5 text-red-400"></p>
-                
-                <div class="flex space-x-4 justify-center">
-                    <button type="button" id="login-btn" class="flex-1 p-3 bg-blue-600 hover:bg-blue-700 rounded-lg text-white font-medium transition duration-200 shadow-md">
-                        Login
-                    </button>
-                    <button type="button" id="register-btn" class="flex-1 p-3 bg-green-600 hover:bg-green-700 rounded-lg text-white font-medium transition duration-200 shadow-md">
-                        Register
-                    </button>
-                </div>
-            </form>
-        </div>
-    </section>
-
-    <!-- --- MAIN APPLICATION DASHBOARD (Hidden until logged in) --- -->
-    <main id="app-container" class="w-full max-w-4xl p-2 space-y-6 z-10 hidden-auth">
-
-        <!-- BMI and Calorie Goal Card (Main Dashboard) -->
-        <section id="dashboard" class="grid grid-cols-1 md:grid-cols-3 gap-4">
-            
-            <!-- Daily Goal / Progress Card -->
-            <div class="daily-goal-card p-6 rounded-xl shadow-2xl backdrop-blur-md bg-white/10 border border-purple-500/30 md:col-span-2">
-                <h2 class="text-xl font-semibold mb-4 text-purple-300">Daily Progress</h2>
-                <div class="flex items-center space-x-4">
-                    <!-- Progress Ring -->
-                    <div class="relative w-24 h-24">
-                        <svg class="w-full h-full" viewBox="0 0 36 36">
-                            <circle class="progress-ring__background text-gray-700" stroke-width="3" stroke="currentColor" fill="transparent" r="15.9155" cx="18" cy="18"/>
-                            <circle id="calorie-progress-circle" class="progress-ring__circle" stroke-width="3" stroke="#8b5cf6" fill="transparent" r="15.9155" cx="18" cy="18" stroke-dasharray="0, 100"/>
-                        </svg>
-                        <div class="absolute inset-0 flex items-center justify-center">
-                            <span id="calorie-percentage" class="text-lg font-bold text-purple-300">0%</span>
-                        </div>
-                    </div>
-                    <!-- Stats -->
-                    <div class="text-sm">
-                        <p class="mb-1">Goal: <span id="goal-calories" class="font-bold text-green-400">2000</span> kcal</p>
-                        <p class="mb-1">Consumed: <span id="consumed-calories" class="font-bold text-yellow-400">0</span> kcal</p>
-                        <p>Remaining: <span id="remaining-calories" class="font-bold text-red-400">2000</span> kcal</p>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Profile/BMI Card -->
-            <div id="profile-card" class="daily-goal-card p-6 rounded-xl shadow-2xl backdrop-blur-md bg-white/10 border border-blue-500/30">
-                <h2 class="text-xl font-semibold mb-4 text-blue-300">My Profile</h2>
-                <p class="text-sm mb-2">Weight: <span id="display-weight" class="font-bold">--</span> kg</p>
-                <p class="text-sm mb-2">Height: <span id="display-height" class="font-bold">--</span> cm</p>
-                <p class="text-sm">BMI: <span id="display-bmi" class="font-bold text-green-400">--</span></p>
-                <button onclick="document.getElementById('profile-modal').showModal()" class="mt-4 w-full p-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-white font-medium transition duration-200 shadow-md">Edit Profile</button>
-            </div>
-        </section>
-
-        <!-- Activity Log Card -->
-        <section class="activity-log-card p-6 rounded-xl shadow-2xl backdrop-blur-md bg-white/10 border border-teal-500/30">
-            <h2 class="text-xl font-semibold mb-4 text-teal-300">Today's Activity Log</h2>
-            <div id="activity-log" class="space-y-3 max-h-60 overflow-y-auto pr-2">
-                <!-- Log entries will be inserted here -->
-                <p id="empty-log-message" class="text-gray-500 italic">No activities logged yet.</p>
-            </div>
-            <button id="clear-log-btn" class="mt-4 p-2 bg-red-600 hover:bg-red-700 rounded-lg text-white font-medium transition duration-200 shadow-md hidden">Clear Today's Log</button>
-        </section>
-
-    </main>
-    
-    <!-- Floating Action Button (FAB) for Manual Entry (Z-index 20) -->
-    <button id="fab" onclick="document.getElementById('entry-modal').showModal()" class="p-4 rounded-full bg-green-500 text-white shadow-lg hover:bg-green-600 z-20 hidden-auth">
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
-        </svg>
-    </button>
-
-    <!-- Modals (Z-index 30) -->
-
-    <!-- Manual Entry Modal -->
-    <dialog id="entry-modal" class="p-6 rounded-xl shadow-2xl backdrop-blur-md bg-gray-800/90 text-white border border-green-500/30 w-11/12 md:w-1/3 z-30">
-        <h3 class="text-2xl font-bold mb-4 text-green-400">Log Activity</h3>
-        <form id="entry-form" class="space-y-4">
-            <div>
-                <label for="food-item" class="block text-sm font-medium mb-1">Item / Activity</label>
-                <input type="text" id="food-item" required class="w-full p-2 rounded-lg bg-gray-700 border border-gray-600 focus:border-green-500 text-white">
-            </div>
-            <div>
-                <label for="calorie-count" class="block text-sm font-medium mb-1">Calories (kcal)</label>
-                <input type="number" id="calorie-count" required min="1" class="w-full p-2 rounded-lg bg-gray-700 border border-gray-600 focus:border-green-500 text-white">
-            </div>
-            <div class="flex justify-end space-x-2">
-                <button type="button" onclick="document.getElementById('entry-modal').close()" class="p-2 bg-gray-600 hover:bg-gray-700 rounded-lg text-white">Cancel</button>
-                <button type="submit" class="p-2 bg-green-600 hover:bg-green-700 rounded-lg text-white font-medium">Add Entry</button>
-            </div>
-        </form>
-    </dialog>
-
-    <!-- Profile/Goal Modal -->
-    <dialog id="profile-modal" class="p-6 rounded-xl shadow-2xl backdrop-blur-md bg-gray-800/90 text-white border border-blue-500/30 w-11/12 md:w-1/3 z-30">
-        <h3 class="text-2xl font-bold mb-4 text-blue-400">Edit Profile & Goals</h3>
-        
-        <form id="profile-form" class="space-y-4 mb-6 p-4 border border-gray-700 rounded-lg">
-            <h4 class="text-lg font-semibold text-blue-300">Body Metrics</h4>
-            <div>
-                <label for="weight-input" class="block text-sm font-medium mb-1">Weight (kg)</label>
-                <input type="number" id="weight-input" required min="1" class="w-full p-2 rounded-lg bg-gray-700 border border-gray-600 focus:border-blue-500 text-white">
-            </div>
-            <div>
-                <label for="height-input" class="block text-sm font-medium mb-1">Height (cm)</label>
-                <input type="number" id="height-input" required min="1" class="w-full p-2 rounded-lg bg-gray-700 border border-gray-600 focus:border-blue-500 text-white">
-            </div>
-            <button type="submit" class="w-full p-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-white font-medium transition duration-200">Save Metrics</button>
-        </form>
-
-        <form id="goal-form" class="space-y-4 p-4 border border-gray-700 rounded-lg">
-            <h4 class="text-lg font-semibold text-purple-300">Calorie Goal</h4>
-            <div>
-                <label for="goal-input" class="block text-sm font-medium mb-1">Daily Calorie Goal (kcal)</label>
-                <input type="number" id="goal-input" required min="500" class="w-full p-2 rounded-lg bg-gray-700 border border-gray-600 focus:border-purple-500 text-white">
-            </div>
-            <button type="submit" class="w-full p-2 bg-purple-600 hover:bg-purple-700 rounded-lg text-white font-medium transition duration-200">Set Goal</button>
-        </form>
-        
-        <div class="flex justify-end mt-4">
-            <button type="button" onclick="document.getElementById('profile-modal').close()" class="p-2 bg-gray-600 hover:bg-gray-700 rounded-lg text-white">Close</button>
-        </div>
-    </dialog>
-
-    <script type="module">
-        // --- 1. Master Configuration Switch ---
-        const USE_CLOUD_STORAGE = true; 
-
-        // --- Firebase Imports ---
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, setDoc, getDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-        import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-
-        if (USE_CLOUD_STORAGE) {
-            setLogLevel('debug');
-        }
-
-        // --- Application Data Model (Default State) ---
-        const DEFAULT_APP_DATA = {
-            profile: {
-                weight: 0,
-                height: 0,
-                goalCalories: 2000,
-            },
-            activityLog: []
-        };
-        let appData = { ...DEFAULT_APP_DATA };
-        
-        // Key used for storing the user's chosen username locally
-        const PERSISTENT_USERNAME_KEY = 'novaFitUsername';
-        
-        let currentUsername = null;
-        let currentFirebaseUID = null; // The secure ID used for private data access
-        
-        // --- UI Element References ---
-        const authScreen = document.getElementById('auth-screen');
-        const appContainer = document.getElementById('app-container');
-        const fabButton = document.getElementById('fab');
-        const userInfoArea = document.getElementById('user-info-area');
-        const usernameDisplay = document.getElementById('username-display');
-        const authMessage = document.getElementById('auth-message');
-        const usernameInput = document.getElementById('username-input');
-        const loginBtn = document.getElementById('login-btn');
-        const registerBtn = document.getElementById('register-btn');
-        const logoutBtn = document.getElementById('logout-btn');
+    <!-- Main Application Container -->
+    <div id="app-container" class="relative z-10 w-full max-w-4xl">
+        <!-- Content will be rendered here based on auth state and current view -->
+    </div>
 
 
-        // --- 2. LocalStorage Implementation (Simple, Instant) ---
-        // (Simplified - cloud is the focus)
-        const LocalStorageDataStore = (function() {
-            const LOCAL_STORAGE_KEY = 'novaFitData';
-            // ... (rest of LocalStorageDataStore remains the same)
-            function loadInitialData() {
-                const storedData = localStorage.getItem(LOCAL_STORAGE_KEY);
-                return storedData ? JSON.parse(storedData) : { ...DEFAULT_APP_DATA };
-            }
-
-            return {
-                init: (callback) => {
-                    const data = loadInitialData();
-                    callback(data);
-                    // In LocalStorage mode, we assume logged in immediately
-                    setAppState('dashboard'); 
-                },
-                saveData: (data) => {
-                    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(data));
-                    appData = data;
-                    renderApp(); 
-                    console.log("Data saved to Local Storage.");
-                },
-                getUsername: () => 'LOCAL_USER',
-                logout: () => {
-                    console.log("Logged out from Local Storage mode.");
-                }
-            };
-        })();
-
-
-        // --- 3. Firebase Firestore Implementation (Complex, Real-time) ---
-        const FirestoreDataStore = (function() {
-            let db, auth;
-            let unsubscribeListener = null; 
-            let isAuthReady = false;
-
+    <script>
+        // Use an IIFE (Immediately Invoked Function Expression) to protect global scope
+        (function() {
+            // --- Global State & Constants ---
+            // Fallback for global variables in case of environment differences
             const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
             const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
             const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
-            
-            // Paths for data storage
-            function getPublicUserMapPath(username) {
-                // Public collection mapping chosen username to secure Firebase UID
-                return `artifacts/${appId}/public/user_map/${username.toLowerCase()}`;
-            }
-            function getPrivateUserDocumentPath(uid) {
-                // Private collection storing fitness data
-                return `artifacts/${appId}/users/${uid}/data/userDocument`;
-            }
 
-            // --- Core Sync Logic ---
-            function startRealtimeSync(uid, dataUpdateCallback) {
-                if (!db || !uid) return;
+            let app;
+            let db;
+            let auth;
+            let userId = null;
+            let isAuthReady = false;
+            let currentView = 'dashboard'; // Can be 'dashboard', 'profile', 'charts'
+            let isRegistering = false; // State for the registration button
 
-                // 1. Clear any existing listener
-                if (unsubscribeListener) {
-                    unsubscribeListener();
-                    unsubscribeListener = null;
-                }
-                
-                // 2. Start new listener on the target UID's private document
-                const docPath = getPrivateUserDocumentPath(uid);
-                console.log(`Starting sync for Data UID: ${uid}`);
-
-                unsubscribeListener = onSnapshot(doc(db, docPath), (docSnapshot) => {
-                    if (docSnapshot.exists()) {
-                        const remoteData = docSnapshot.data();
-                        const updatedData = {
-                            profile: { ...DEFAULT_APP_DATA.profile, ...remoteData.profile },
-                            activityLog: Array.isArray(remoteData.activityLog) ? remoteData.activityLog : []
-                        };
-                        dataUpdateCallback(updatedData);
-                    } else {
-                        // Document doesn't exist for this UID, initialize and save defaults
-                        dataUpdateCallback(DEFAULT_APP_DATA); 
-                        FirestoreDataStore.saveData(DEFAULT_APP_DATA); 
-                    }
-                }, (error) => {
-                    console.error("Error setting up real-time listener:", error);
-                });
-            }
-            
-            // --- Core Authentication / Setup ---
-            async function setupFirebaseAuth() {
-                try {
-                    const app = initializeApp(firebaseConfig);
-                    db = getFirestore(app);
-                    auth = getAuth(app);
-                    
-                    // 1. Establish the underlying Firebase security session (required for security rules)
-                    let authPromise;
-                    if (initialAuthToken) {
-                        authPromise = signInWithCustomToken(auth, initialAuthToken);
-                    } else {
-                        authPromise = signInAnonymously(auth);
-                    }
-                    
-                    const userCredential = await authPromise;
-                    currentFirebaseUID = userCredential.user.uid;
-                    isAuthReady = true;
-                    console.log(`Firebase Auth Ready. Base UID: ${currentFirebaseUID}`);
-                    
-                    // 2. Try to automatically log in the user if a username is stored
-                    const storedUsername = localStorage.getItem(PERSISTENT_USERNAME_KEY);
-                    if (storedUsername) {
-                        await loginUser(storedUsername);
-                    } else {
-                        // If no username is stored, show the login screen
-                        setAppState('auth-screen');
-                    }
-
-                } catch (error) {
-                    console.error("Firebase setup or authentication failed:", error);
-                    authMessage.textContent = 'Auth error. Check console.';
-                    setAppState('auth-screen');
-                }
-            }
-            
-            // --- User Mapping Functions ---
-            
-            async function checkUsername(username) {
-                const docRef = doc(db, getPublicUserMapPath(username));
-                const docSnap = await getDoc(docRef);
-                return docSnap.exists() ? docSnap.data().firebaseUID : null;
-            }
-
-            async function mapUsernameToUID(username, uid) {
-                try {
-                    const docRef = doc(db, getPublicUserMapPath(username));
-                    await setDoc(docRef, { firebaseUID: uid });
-                    console.log(`Username ${username} mapped to UID ${uid}.`);
-                    return true;
-                } catch (error) {
-                    console.error("Error mapping username:", error);
-                    return false;
-                }
-            }
-
-            // --- Public Login/Register/Logout ---
-
-            async function registerUser(username, dataUpdateCallback) {
-                authMessage.textContent = 'Checking username...';
-                
-                // 1. Check if username is already taken
-                const existingUID = await checkUsername(username);
-                if (existingUID) {
-                    authMessage.textContent = 'Error: That username is already taken.';
-                    return;
-                }
-                
-                // 2. Map the new username to the current, anonymous Firebase UID
-                const success = await mapUsernameToUID(username, currentFirebaseUID);
-                if (success) {
-                    // 3. Persist the username and log the user in
-                    localStorage.setItem(PERSISTENT_USERNAME_KEY, username);
-                    currentUsername = username;
-                    startRealtimeSync(currentFirebaseUID, dataUpdateCallback);
-                    setAppState('dashboard');
-                } else {
-                    authMessage.textContent = 'Registration failed. Try again.';
-                }
-            }
-
-            async function loginUser(username, dataUpdateCallback) {
-                authMessage.textContent = 'Logging in...';
-                
-                // 1. Look up the secure Firebase UID associated with the username
-                const targetUID = await checkUsername(username);
-
-                if (!targetUID) {
-                    authMessage.textContent = 'Error: Username not found. Please Register.';
-                    return;
-                }
-
-                // 2. Set the current data target to the retrieved UID
-                localStorage.setItem(PERSISTENT_USERNAME_KEY, username);
-                currentUsername = username;
-                
-                // NOTE: We now use the TARGET UID for all data operations, even if it's different 
-                // from the current device's anonymous session UID.
-                currentFirebaseUID = targetUID; 
-                
-                // 3. Start sync on the target UID
-                startRealtimeSync(currentFirebaseUID, dataUpdateCallback);
-                setAppState('dashboard');
-            }
-
-            return {
-                async init(dataUpdateCallback) {
-                    setupFirebaseAuth();
+            // Initialize appData with default structure
+            let appData = {
+                username: null,
+                profile: {
+                    weight: 75, // kg
+                    height: 175, // cm
+                    age: 30,
+                    gender: 'Male'
                 },
+                goal: {
+                    dailySteps: 10000,
+                    dailyCalories: 500,
+                },
+                activityLog: [], // { id, type, value, calories, date }
+            };
 
-                async saveData(data) {
-                    if (!currentFirebaseUID) {
-                        console.warn("User not logged in. Cannot save data.");
+            const COLLECTION_NAME = 'novafit';
+            const USER_DOC_PATH = (uid) => `artifacts/${appId}/users/${uid}/${COLLECTION_NAME}/data`;
+            const USERNAME_CHECK_PATH = (username) => `artifacts/${appId}/public/data/${COLLECTION_NAME}/usernames/${username}`;
+
+            // --- Utility Functions ---
+
+            /**
+             * Calculates the circumference for the progress circle.
+             * @param {number} radius - The radius of the circle.
+             * @returns {number} The circumference.
+             */
+            function getCircumference(radius) {
+                return 2 * Math.PI * radius;
+            }
+
+            /**
+             * Renders the circular progress bar.
+             * @param {number} percentage - The completion percentage (0-100).
+             * @param {string} targetElementId - The ID of the container to render into.
+             * @param {number} size - Width/Height of the SVG.
+             * @param {number} strokeWidth - Thickness of the stroke.
+             */
+            function renderProgressRing(percentage, targetElementId, size = 120, strokeWidth = 8) {
+                const element = document.getElementById(targetElementId);
+                if (!element) return;
+
+                const radius = (size / 2) - (strokeWidth / 2);
+                const circumference = getCircumference(radius);
+                const offset = circumference - (percentage / 100) * circumference;
+
+                element.innerHTML = `
+                    <svg class="progress-ring" width="${size}" height="${size}">
+                        <!-- Background Circle -->
+                        <circle
+                            stroke="#4b5563"
+                            fill="transparent"
+                            stroke-width="${strokeWidth}"
+                            r="${radius}"
+                            cx="${size / 2}"
+                            cy="${size / 2}"
+                            class="opacity-50"
+                        />
+                        <!-- Foreground Progress Circle -->
+                        <circle
+                            id="progress-circle-${targetElementId}"
+                            stroke="#a78bfa"
+                            fill="transparent"
+                            stroke-width="${strokeWidth}"
+                            stroke-linecap="round"
+                            r="${radius}"
+                            cx="${size / 2}"
+                            cy="${size / 2}"
+                            stroke-dasharray="${circumference} ${circumference}"
+                            stroke-dashoffset="${offset}"
+                            class="progress-ring__circle shadow-lg shadow-purple-500/50"
+                        />
+                    </svg>
+                    <div class="absolute inset-0 flex flex-col items-center justify-center text-center">
+                        <span class="text-2xl font-bold">${Math.round(percentage)}%</span>
+                        <span class="text-xs text-gray-300">Goal Met</span>
+                    </div>
+                `;
+            }
+
+            /**
+             * Creates and starts the particle background animation.
+             */
+            function generateParticles() {
+                const container = document.getElementById('particles-container');
+                if (!container) return;
+                const numberOfParticles = 20;
+
+                for (let i = 0; i < numberOfParticles; i++) {
+                    const particle = document.createElement('div');
+                    particle.classList.add('particle', 'bg-purple-400', 'shadow-lg', 'shadow-purple-500/50');
+                    
+                    const size = Math.random() * 8 + 4; // Size between 4px and 12px
+                    particle.style.width = `${size}px`;
+                    particle.style.height = `${size}px`;
+
+                    const duration = Math.random() * 10 + 10; // Duration between 10s and 20s
+                    particle.style.animationDuration = `${duration}s, ${duration}s`;
+                    
+                    const positionX = Math.random() * 100; // 0 to 100%
+                    const positionY = Math.random() * 100;
+                    particle.style.left = `${positionX}%`;
+                    particle.style.top = `${positionY}%`;
+                    
+                    // Random animation delay for staggering
+                    particle.style.animationDelay = `-${Math.random() * duration}s, -${Math.random() * duration}s`;
+
+                    // Random flow offsets (for the CSS variable in the flow keyframe)
+                    const flowX = Math.random() * 200 - 100;
+                    const flowY = Math.random() * 200 - 100;
+                    particle.style.setProperty('--flow-x', `${flowX}px`);
+                    particle.style.setProperty('--flow-y', `${flowY}px`);
+
+                    container.appendChild(particle);
+                }
+            }
+
+            /**
+             * Custom alert/message box function.
+             * @param {string} message - The message to display.
+             */
+            function showMessage(message) {
+                const container = document.getElementById('message-container');
+                if (!container) return;
+
+                const messageBox = document.createElement('div');
+                messageBox.classList.add(
+                    'fixed', 'bottom-4', 'right-4', 'bg-gray-800', 'text-white', 'p-4', 
+                    'rounded-lg', 'shadow-2xl', 'z-50', 'animate-pulse'
+                );
+                messageBox.textContent = message;
+
+                container.appendChild(messageBox);
+                
+                setTimeout(() => {
+                    messageBox.remove();
+                }, 3000); // Remove after 3 seconds
+            }
+
+            /**
+             * Fallback/mock for window.confirm() in restricted environments.
+             * @returns {boolean} Returns true to allow the action to proceed.
+             */
+            function confirmAction(message) {
+                 console.warn(`Assuming confirmation for action: ${message}`);
+                 // Using custom modal is required, but for non-critical flow like clear log, we'll assume yes.
+                 return true;
+            }
+
+
+            // --- Firebase Data Handling ---
+
+            /**
+             * Loads user data from Firestore.
+             */
+            async function loadFirestoreData() {
+                if (!db || !userId) return;
+
+                try {
+                    const docRef = firebase.doc(db, USER_DOC_PATH(userId));
+                    const docSnap = await firebase.getDoc(docRef);
+
+                    if (docSnap.exists()) {
+                        console.log("Document data loaded successfully:", docSnap.data());
+                        const loadedData = docSnap.data();
+                        
+                        // Merge loaded data with default structure
+                        appData = {
+                            ...appData,
+                            ...loadedData,
+                            profile: { ...appData.profile, ...(loadedData.profile || {}) },
+                            goal: { ...appData.goal, ...(loadedData.goal || {}) },
+                            // Ensure activityLog is an array, parsing if stored as JSON string
+                            activityLog: Array.isArray(loadedData.activityLog) 
+                                ? loadedData.activityLog 
+                                : (typeof loadedData.activityLog === 'string' ? JSON.parse(loadedData.activityLog) : [])
+                        };
+
+                    } else {
+                        console.log("No user document found. Using default data.");
+                        // If no document exists, the user is new, so we proceed with default data.
+                    }
+
+                } catch (error) {
+                    console.error("Error loading data from Firestore:", error);
+                    showMessage("Error loading data. Check console for details.");
+                }
+                
+                renderApp(); // Re-render once data is loaded/initialized
+            }
+
+            /**
+             * Saves all app data to Firestore.
+             */
+            async function saveFirestoreData() {
+                if (!db || !userId || !appData.username) return; // Must have a user ID and username to save
+
+                try {
+                    const docRef = firebase.doc(db, USER_DOC_PATH(userId));
+                    
+                    // Stringify complex arrays if necessary (though activityLog is simple enough)
+                    const dataToSave = {
+                        ...appData,
+                        // Ensure activity log is saved as an array of objects
+                        activityLog: appData.activityLog
+                    };
+
+                    await firebase.setDoc(docRef, dataToSave, { merge: true });
+                    console.log("Data saved to Firestore successfully.");
+                } catch (error) {
+                    console.error("Error saving data to Firestore:", error);
+                    showMessage("Error saving progress. Check console for details.");
+                }
+            }
+
+
+            /**
+             * Registers a new unique username for the currently signed-in user.
+             * This function resolves the "stuck on checking" issue.
+             * @param {string} username - The desired unique username.
+             */
+            async function registerUser(username) {
+                if (!db || !userId) {
+                    showMessage("Authentication not ready. Please wait.");
+                    return;
+                }
+                if (isRegistering) return;
+                isRegistering = true;
+                renderAuthScreen(); // Update button state to "Checking..."
+
+                try {
+                    const usernameRef = firebase.doc(db, USERNAME_CHECK_PATH(username));
+                    const usernameDoc = await firebase.getDoc(usernameRef);
+
+                    if (usernameDoc.exists()) {
+                        showMessage(`Username '${username}' is already taken.`);
+                        isRegistering = false;
+                        renderAuthScreen();
                         return;
                     }
-        
-                    const docPath = getPrivateUserDocumentPath(currentFirebaseUID);
-        
-                    try {
-                        await setDoc(doc(db, docPath), data);
-                        console.log("Data saved successfully to Firestore.");
-                    } catch (error) {
-                        console.error("Error saving data:", error);
-                    }
-                },
-                
-                getUsername: () => currentUsername,
-                
-                register: (username) => registerUser(username, handleDataUpdate),
-                login: (username) => loginUser(username, handleDataUpdate),
-                
-                logout: () => {
-                    localStorage.removeItem(PERSISTENT_USERNAME_KEY);
-                    currentUsername = null;
-                    currentFirebaseUID = null;
-                    if (unsubscribeListener) {
-                        unsubscribeListener();
-                        unsubscribeListener = null;
-                    }
-                    setAppState('auth-screen');
-                    authMessage.textContent = 'Logged out successfully.';
-                    // Clear app data locally
-                    handleDataUpdate(DEFAULT_APP_DATA);
-                    // Reload the page to reset the anonymous session if needed for a fresh start
-                    // window.location.reload(); 
-                }
-            };
-        })();
+                    
+                    // 1. Create the public username mapping (marks it as taken)
+                    await firebase.setDoc(usernameRef, { 
+                        userId: userId, 
+                        createdAt: new Date().toISOString() 
+                    });
+                    
+                    // 2. Save the username to the user's private data
+                    appData.username = username;
+                    await saveFirestoreData();
 
-
-        // --- 4. Select the Active Data Store ---
-        const DataStore = USE_CLOUD_STORAGE ? FirestoreDataStore : LocalStorageDataStore;
-
-
-        // --- UI State Management ---
-        function setAppState(state) {
-            if (state === 'dashboard') {
-                authScreen.classList.add('hidden-auth');
-                appContainer.classList.remove('hidden-auth');
-                fabButton.classList.remove('hidden-auth');
-                userInfoArea.classList.remove('hidden-auth');
-                usernameDisplay.textContent = DataStore.getUsername();
-            } else if (state === 'auth-screen') {
-                authScreen.classList.remove('hidden-auth');
-                appContainer.classList.add('hidden-auth');
-                fabButton.classList.add('hidden-auth');
-                userInfoArea.classList.add('hidden-auth');
-            }
-        }
-
-
-        // --- CORE APPLICATION LOGIC ---
-        function calculateBMI() {
-            const weight = appData.profile.weight;
-            const heightMeters = appData.profile.height / 100;
-            if (weight > 0 && heightMeters > 0) {
-                const bmi = weight / (heightMeters * heightMeters);
-                return bmi.toFixed(2);
-            }
-            return '--';
-        }
-
-        function confirmAction(message) {
-             console.warn(`Assuming confirmation for action: ${message}`);
-             return true; 
-        }
-
-        function renderApp() {
-            const today = new Date().toISOString().split('T')[0];
-            const todayEntries = appData.activityLog.filter(entry => entry.date === today);
-            const totalConsumed = todayEntries.reduce((sum, entry) => sum + entry.calories, 0);
-            const goal = appData.profile.goalCalories || 2000;
-            
-            // 1. Profile and BMI
-            document.getElementById('display-weight').textContent = appData.profile.weight > 0 ? `${appData.profile.weight} kg` : '--';
-            document.getElementById('display-height').textContent = appData.profile.height > 0 ? `${appData.profile.height} cm` : '--';
-            document.getElementById('display-bmi').textContent = calculateBMI();
-            
-            // Set form inputs
-            if (document.getElementById('weight-input')) document.getElementById('weight-input').value = appData.profile.weight || '';
-            if (document.getElementById('height-input')) document.getElementById('height-input').value = appData.profile.height || '';
-            if (document.getElementById('goal-input')) document.getElementById('goal-input').value = goal;
-
-            // 2. Daily Progress
-            const remaining = goal - totalConsumed;
-            const percentage = Math.min(100, (totalConsumed / goal) * 100);
-            const circumference = 2 * Math.PI * 15.9155;
-            const dashoffset = circumference - (percentage / 100) * circumference;
-
-            document.getElementById('goal-calories').textContent = goal;
-            document.getElementById('consumed-calories').textContent = totalConsumed;
-            document.getElementById('remaining-calories').textContent = Math.max(0, remaining);
-            document.getElementById('calorie-percentage').textContent = `${Math.round(percentage)}%`;
-            
-            const progressCircle = document.getElementById('calorie-progress-circle');
-            
-            if (progressCircle) {
-                progressCircle.style.strokeDasharray = `${circumference}, ${circumference}`;
-                progressCircle.style.strokeDashoffset = dashoffset;
-                
-                // Set circle color based on progress
-                if (remaining < 0) {
-                    progressCircle.setAttribute('stroke', '#ef4444'); // red
-                } else if (percentage >= 100) {
-                    progressCircle.setAttribute('stroke', '#10b981'); // emerald/green
-                } else {
-                    progressCircle.setAttribute('stroke', '#8b5cf6'); // purple
+                    showMessage(`Welcome, ${username}! Registration successful.`);
+                    isRegistering = false;
+                    renderApp(); // Rerender to show the dashboard
+                    
+                } catch (error) {
+                    console.error("Error registering user:", error);
+                    showMessage("Registration failed. Please try again.");
+                    isRegistering = false;
+                    renderAuthScreen();
                 }
             }
 
-            // 3. Activity Log
-            const logContainer = document.getElementById('activity-log');
-            const emptyLogMessage = document.getElementById('empty-log-message');
-            const clearLogBtn = document.getElementById('clear-log-btn');
-            
-            if (logContainer) logContainer.innerHTML = '';
-            
-            if (todayEntries.length === 0) {
-                if (emptyLogMessage) emptyLogMessage.style.display = 'block';
-                if (clearLogBtn) clearLogBtn.classList.add('hidden');
-            } else {
-                if (emptyLogMessage) emptyLogMessage.style.display = 'none';
-                if (clearLogBtn) clearLogBtn.classList.remove('hidden');
-
-                todayEntries.sort((a, b) => b.id - a.id); // Show newest first
+            /**
+             * Attempts to log in with an existing username.
+             * NOTE: Since all users are anonymously authenticated first, this just confirms
+             * that the username is associated with *any* authenticated user in the system.
+             * For this demo, we'll just check if the username exists and proceed.
+             */
+            async function loginUser(username) {
+                if (!db || !userId) {
+                    showMessage("Authentication not ready. Please wait.");
+                    return;
+                }
                 
-                todayEntries.forEach(entry => {
-                    const logItem = document.createElement('div');
-                    logItem.className = 'flex justify-between items-center p-3 bg-gray-700/50 rounded-lg shadow-sm';
-                    logItem.innerHTML = `
-                        <p class="text-sm font-medium">${entry.item}</p>
+                if (isRegistering) return; // Re-using this state for simplicity
+                isRegistering = true;
+                renderAuthScreen();
+
+                try {
+                    const usernameRef = firebase.doc(db, USERNAME_CHECK_PATH(username));
+                    const usernameDoc = await firebase.getDoc(usernameRef);
+                    
+                    if (usernameDoc.exists()) {
+                        // The username is registered. Now, check if it belongs to the *current* userId.
+                        // Since we are signed in anonymously/with custom token, we assume the user 
+                        // is *already* logged into their correct account via the initial token.
+                        // We will check if the user's *private* document has the requested username.
+
+                        const userDocRef = firebase.doc(db, USER_DOC_PATH(userId));
+                        const userDocSnap = await firebase.getDoc(userDocRef);
+
+                        if (userDocSnap.exists() && userDocSnap.data().username === username) {
+                            appData.username = username;
+                            showMessage(`Logged in as ${username}.`);
+                            isRegistering = false;
+                            renderApp();
+                        } else {
+                            // This means the public username exists but isn't linked to the current user's private doc.
+                            showMessage("Username does not match this account. Please register a new name or use the correct device.");
+                            isRegistering = false;
+                            renderAuthScreen();
+                        }
+                    } else {
+                        showMessage(`Username '${username}' not found. Please register.`);
+                        isRegistering = false;
+                        renderAuthScreen();
+                    }
+                } catch (error) {
+                    console.error("Error logging in:", error);
+                    showMessage("Login failed. Check console for details.");
+                    isRegistering = false;
+                    renderAuthScreen();
+                }
+            }
+
+            // --- UI Rendering ---
+
+            /**
+             * Renders the main application view based on the current state.
+             */
+            function renderApp() {
+                const container = document.getElementById('app-container');
+                if (!container) return;
+                
+                // Show Auth Screen if username is null or auth is not ready
+                if (!appData.username || !isAuthReady) {
+                    renderAuthScreen();
+                    return;
+                }
+
+                // Otherwise, show the main dashboard/content
+                let content = '';
+
+                const bmi = calculateBMI();
+                const progressSteps = calculateProgress('steps');
+                const progressCalories = calculateProgress('calories');
+
+                // Generate appropriate view content
+                switch (currentView) {
+                    case 'profile':
+                        content = renderProfileView();
+                        break;
+                    case 'charts':
+                        content = renderChartsView();
+                        break;
+                    case 'dashboard':
+                    default:
+                        content = renderDashboardView(bmi, progressSteps, progressCalories);
+                        break;
+                }
+
+                container.innerHTML = `
+                    <div id="message-container"></div>
+                    ${renderNavigationView()}
+                    <div class="mt-8">
+                        ${content}
+                    </div>
+                `;
+
+                // After rendering, setup interactive elements and progress rings
+                setupProfileForms();
+                setupManualEntry();
+                setupGoalForm();
+                setupClearLog();
+                
+                if (currentView === 'dashboard') {
+                    renderProgressRing(progressSteps, 'steps-progress', 120, 8);
+                    renderProgressRing(progressCalories, 'calories-progress', 120, 8);
+                }
+                
+                if (currentView === 'charts') {
+                    renderCharts();
+                }
+
+                // Set up navigation listeners again after content refresh
+                setupNavigation();
+            }
+
+            /**
+             * Renders the authentication and welcome screen.
+             */
+            function renderAuthScreen() {
+                const container = document.getElementById('app-container');
+                if (!container) return;
+
+                const buttonText = isRegistering ? 'Checking Username...' : 'Register';
+
+                container.innerHTML = `
+                    <div class="min-h-[60vh] flex flex-col items-center justify-center p-6 bg-white/10 backdrop-blur-lg rounded-xl shadow-2xl border border-blue-500/30">
+                        <h1 class="text-4xl font-extrabold mb-2 text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-cyan-400">
+                            Welcome to NovaFit
+                        </h1>
+                        <p class="text-gray-300 mb-8 text-center max-w-md">
+                            Your fitness journey starts here. Please choose a unique username to register or login.
+                        </p>
+
+                        <div class="w-full max-w-xs space-y-4">
+                            <input 
+                                type="text" 
+                                id="username-input" 
+                                placeholder="Enter Unique Username" 
+                                class="w-full p-3 rounded-lg bg-gray-700 text-white placeholder-gray-400 focus:ring-2 focus:ring-purple-500 border border-gray-600 outline-none"
+                                value=""
+                            />
+                            <div class="flex space-x-2">
+                                <button 
+                                    id="register-btn" 
+                                    class="flex-1 p-3 rounded-lg font-bold text-white transition duration-300 shadow-md shadow-purple-500/50 
+                                        ${isRegistering ? 'bg-gray-500 cursor-not-allowed' : 'bg-purple-600 hover:bg-purple-700 active:scale-95'}"
+                                    ${isRegistering ? 'disabled' : ''}
+                                >
+                                    ${buttonText}
+                                </button>
+                                <button 
+                                    id="login-btn" 
+                                    class="flex-1 p-3 rounded-lg font-bold text-white transition duration-300 border border-cyan-500 
+                                        ${isRegistering ? 'bg-gray-500 cursor-not-allowed' : 'bg-transparent hover:bg-cyan-500/20 active:scale-95'}"
+                                    ${isRegistering ? 'disabled' : ''}
+                                >
+                                    Login
+                                </button>
+                            </div>
+                        </div>
+
+                        ${!isAuthReady 
+                            ? `<p class="mt-4 text-sm text-yellow-400">Connecting to database...</p>` 
+                            : `<p class="mt-4 text-sm text-gray-400">User ID: ${userId || 'N/A'}</p>`
+                        }
+                    </div>
+                `;
+
+                // Setup listeners for the auth buttons
+                document.getElementById('register-btn')?.addEventListener('click', () => {
+                    const username = document.getElementById('username-input').value.trim();
+                    if (username) registerUser(username);
+                });
+                document.getElementById('login-btn')?.addEventListener('click', () => {
+                    const username = document.getElementById('username-input').value.trim();
+                    if (username) loginUser(username);
+                });
+            }
+
+            // --- Other View Rendering Functions (Abbreviated for focus on Auth Fix) ---
+
+            function renderNavigationView() {
+                // ... (Navigation bar HTML remains the same)
+                 return `
+                    <nav class="bg-white/10 backdrop-blur-md rounded-xl p-3 shadow-xl mb-6 flex justify-between items-center border border-gray-600">
                         <div class="flex items-center space-x-3">
-                            <span class="text-xs font-bold text-yellow-300">${entry.calories} kcal</span>
-                            <button data-id="${entry.id}" class="remove-entry text-red-400 hover:text-red-500 transition duration-150">
-                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-                                </svg>
+                            <svg class="w-6 h-6 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9h-9m4 0h1a1 1 0 001-1v-1m-4 4h1a1 1 0 011-1v-1m-4 4v2m-5-4v2m-5-4v2M3 12h9m-9 0a9 9 0 009 9m-9-9a9 9 0 019-9"></path>
+                            </svg>
+                            <span class="text-xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-cyan-400">NovaFit</span>
+                        </div>
+                        <div class="flex space-x-2">
+                            <button id="nav-dashboard" class="p-2 rounded-full transition duration-150 ${currentView === 'dashboard' ? 'bg-purple-500 shadow-lg shadow-purple-500/50' : 'text-gray-300 hover:bg-white/20'}">
+                                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2-2m-2 2l-7 7m7-7v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path></svg>
+                            </button>
+                            <button id="nav-charts" class="p-2 rounded-full transition duration-150 ${currentView === 'charts' ? 'bg-purple-500 shadow-lg shadow-purple-500/50' : 'text-gray-300 hover:bg-white/20'}">
+                                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 3.055A9.957 9.957 0 0112 12m0 0v10m0-10a9.957 9.957 0 017.962 4.038m-7.962-4.038A9.957 9.957 0 004.038 12m7.962 0h-9m9 0h9m-9 0v-9"></path></svg>
+                            </button>
+                            <button id="nav-profile" class="p-2 rounded-full transition duration-150 ${currentView === 'profile' ? 'bg-purple-500 shadow-lg shadow-purple-500/50' : 'text-gray-300 hover:bg-white/20'}">
+                                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5.121 17.804A8.997 8.997 0 0112 15c2.035 0 3.931.785 5.399 2.196m-10.798 0l-.398.397m11.596-.397l.398.397M12 12a3 3 0 100-6 3 3 0 000 6z"></path></svg>
                             </button>
                         </div>
-                    `;
-                    if (logContainer) logContainer.appendChild(logItem);
+                    </nav>
+                    <p class="text-sm text-center text-gray-400 mb-4">Logged in as: ${appData.username} (${userId})</p>
+                `;
+            }
+
+            function renderDashboardView(bmi, progressSteps, progressCalories) {
+                // ... (Dashboard HTML remains the same)
+                const totalSteps = appData.activityLog
+                    .filter(a => a.type === 'steps')
+                    .reduce((sum, a) => sum + parseInt(a.value), 0);
+                const totalCalories = appData.activityLog
+                    .filter(a => a.type !== 'steps')
+                    .reduce((sum, a) => sum + parseInt(a.calories), 0);
+
+                return `
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <!-- Goal Progress Card -->
+                        <div class="md:col-span-2 daily-goal-card p-6 rounded-xl shadow-2xl transition duration-300 bg-white/10 backdrop-blur-md border border-purple-500/30">
+                            <h2 class="text-2xl font-bold mb-4 text-purple-400">Daily Goal Progress</h2>
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div class="p-4 rounded-lg bg-white/5 flex flex-col items-center">
+                                    <h3 class="text-lg font-semibold text-cyan-400 mb-2">Steps Goal</h3>
+                                    <div id="steps-progress" class="relative"></div>
+                                    <p class="mt-2 text-sm text-gray-300">${totalSteps.toLocaleString()} / ${appData.goal.dailySteps.toLocaleString()} steps</p>
+                                </div>
+                                <div class="p-4 rounded-lg bg-white/5 flex flex-col items-center">
+                                    <h3 class="text-lg font-semibold text-purple-400 mb-2">Calorie Burn Goal</h3>
+                                    <div id="calories-progress" class="relative"></div>
+                                    <p class="mt-2 text-sm text-gray-300">${totalCalories.toLocaleString()} / ${appData.goal.dailyCalories.toLocaleString()} kcal</p>
+                                </div>
+                            </div>
+                            <div id="goal-message" class="mt-4 text-center text-lg font-medium text-green-400">
+                                ${progressSteps >= 100 && progressCalories >= 100 ? "Amazing work! Goals achieved." : "Keep pushing, you're doing great!"}
+                            </div>
+                        </div>
+
+                        <!-- Manual Entry Card -->
+                        <div class="daily-goal-card p-6 rounded-xl shadow-2xl transition duration-300 bg-white/10 backdrop-blur-md border border-blue-500/30">
+                            <h2 class="text-2xl font-bold mb-4 text-blue-400">Log Activity</h2>
+                            <form id="manual-entry-form" class="space-y-3">
+                                <div>
+                                    <label for="activity-type" class="block text-sm font-medium text-gray-300">Activity Type</label>
+                                    <select id="activity-type" class="w-full p-2 mt-1 rounded-lg bg-gray-700 text-white border border-gray-600 outline-none">
+                                        <option value="Running">Running</option>
+                                        <option value="Cycling">Cycling</option>
+                                        <option value="Walking">Walking</option>
+                                        <option value="Weights">Weights</option>
+                                        <option value="Steps" selected>Steps</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label for="activity-value" class="block text-sm font-medium text-gray-300">Value (e.g., Steps, Minutes)</label>
+                                    <input type="number" id="activity-value" placeholder="Enter value" required class="w-full p-2 mt-1 rounded-lg bg-gray-700 text-white border border-gray-600 outline-none">
+                                </div>
+                                <div>
+                                    <label for="activity-calories" class="block text-sm font-medium text-gray-300">Calories Burned (kcal)</label>
+                                    <input type="number" id="activity-calories" placeholder="Estimate calories" required class="w-full p-2 mt-1 rounded-lg bg-gray-700 text-white border border-gray-600 outline-none">
+                                </div>
+                                <button type="submit" class="w-full p-3 bg-blue-600 hover:bg-blue-700 active:scale-95 transition duration-150 rounded-lg font-bold shadow-md shadow-blue-500/50">
+                                    <svg class="w-5 h-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                                    Add Log
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+
+                    <!-- Activity Log & BMI -->
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mt-6">
+                        <!-- BMI Card -->
+                        <div class="activity-log-card p-6 rounded-xl shadow-2xl bg-white/10 backdrop-blur-md border border-purple-500/30">
+                            <h2 class="text-2xl font-bold mb-4 text-purple-400">Health Metrics</h2>
+                            <div class="space-y-3">
+                                <p class="text-lg font-medium">BMI: <span class="text-3xl font-extrabold text-cyan-400">${bmi.value}</span></p>
+                                <p class="text-md text-gray-300">Category: <span class="font-semibold text-green-400">${bmi.category}</span></p>
+                                <p class="text-sm text-gray-400">Weight: ${appData.profile.weight} kg | Height: ${appData.profile.height} cm</p>
+                                <button id="view-profile-btn" class="text-sm text-purple-400 hover:underline">Edit Profile</button>
+                            </div>
+                        </div>
+
+                        <!-- Activity Log Card -->
+                        <div class="md:col-span-2 activity-log-card p-6 rounded-xl shadow-2xl bg-white/10 backdrop-blur-md border border-blue-500/30">
+                            <div class="flex justify-between items-center mb-4">
+                                <h2 class="text-2xl font-bold text-blue-400">Activity Log</h2>
+                                <button id="clear-log-btn" class="p-2 text-sm text-red-400 bg-red-500/20 rounded-lg hover:bg-red-500/40 transition duration-150">
+                                    Clear All
+                                </button>
+                            </div>
+                            <ul id="activity-list" class="space-y-2 max-h-60 overflow-y-auto pr-2">
+                                ${appData.activityLog.length === 0 
+                                    ? '<li class="text-gray-400">No activities logged yet.</li>' 
+                                    : appData.activityLog.slice().reverse().map(activity => `
+                                        <li class="flex justify-between items-center p-3 rounded-lg bg-gray-700/50 hover:bg-gray-600/50 transition duration-100 border border-gray-600">
+                                            <div class="flex flex-col">
+                                                <span class="font-semibold">${activity.type}</span>
+                                                <span class="text-xs text-gray-400">${new Date(activity.date).toLocaleDateString()}</span>
+                                            </div>
+                                            <div class="text-right">
+                                                <span class="block font-bold text-cyan-400">${activity.value} ${activity.type === 'Steps' ? 'steps' : 'min'}</span>
+                                                <span class="block text-sm text-purple-400">${activity.calories} kcal</span>
+                                            </div>
+                                        </li>
+                                    `).join('')
+                                }
+                            </ul>
+                        </div>
+                    </div>
+                `;
+            }
+
+            function renderProfileView() {
+                // ... (Profile view HTML remains the same)
+                return `
+                    <div class="max-w-xl mx-auto space-y-8 p-6 bg-white/10 backdrop-blur-md rounded-xl shadow-2xl border border-purple-500/30">
+                        <h2 class="text-3xl font-bold text-purple-400 text-center">My Profile & Goals</h2>
+                        
+                        <!-- Profile Form -->
+                        <div class="p-4 rounded-lg bg-white/5 border border-gray-700">
+                            <h3 class="text-xl font-semibold mb-3 text-cyan-400">Personal Metrics</h3>
+                            <form id="profile-form" class="space-y-4">
+                                <div>
+                                    <label for="weight" class="block text-sm font-medium text-gray-300">Weight (kg)</label>
+                                    <input type="number" id="weight" value="${appData.profile.weight}" required class="w-full p-2 mt-1 rounded-lg bg-gray-700 text-white border border-gray-600 outline-none">
+                                </div>
+                                <div>
+                                    <label for="height" class="block text-sm font-medium text-gray-300">Height (cm)</label>
+                                    <input type="number" id="height" value="${appData.profile.height}" required class="w-full p-2 mt-1 rounded-lg bg-gray-700 text-white border border-gray-600 outline-none">
+                                </div>
+                                <div>
+                                    <label for="age" class="block text-sm font-medium text-gray-300">Age</label>
+                                    <input type="number" id="age" value="${appData.profile.age}" required class="w-full p-2 mt-1 rounded-lg bg-gray-700 text-white border border-gray-600 outline-none">
+                                </div>
+                                <div>
+                                    <label for="gender" class="block text-sm font-medium text-gray-300">Gender</label>
+                                    <select id="gender" class="w-full p-2 mt-1 rounded-lg bg-gray-700 text-white border border-gray-600 outline-none">
+                                        <option value="Male" ${appData.profile.gender === 'Male' ? 'selected' : ''}>Male</option>
+                                        <option value="Female" ${appData.profile.gender === 'Female' ? 'selected' : ''}>Female</option>
+                                        <option value="Other" ${appData.profile.gender === 'Other' ? 'selected' : ''}>Other</option>
+                                    </select>
+                                </div>
+                                <button type="submit" class="w-full p-3 bg-purple-600 hover:bg-purple-700 active:scale-95 transition duration-150 rounded-lg font-bold shadow-md shadow-purple-500/50">
+                                    Update Profile
+                                </button>
+                            </form>
+                        </div>
+
+                        <!-- Goal Form -->
+                        <div class="p-4 rounded-lg bg-white/5 border border-gray-700">
+                            <h3 class="text-xl font-semibold mb-3 text-cyan-400">Daily Goals</h3>
+                            <form id="goal-form" class="space-y-4">
+                                <div>
+                                    <label for="daily-steps" class="block text-sm font-medium text-gray-300">Daily Steps Goal</label>
+                                    <input type="number" id="daily-steps" value="${appData.goal.dailySteps}" required class="w-full p-2 mt-1 rounded-lg bg-gray-700 text-white border border-gray-600 outline-none">
+                                </div>
+                                <div>
+                                    <label for="daily-calories" class="block text-sm font-medium text-gray-300">Daily Calorie Burn Goal (kcal)</label>
+                                    <input type="number" id="daily-calories" value="${appData.goal.dailyCalories}" required class="w-full p-2 mt-1 rounded-lg bg-gray-700 text-white border border-gray-600 outline-none">
+                                </div>
+                                <button type="submit" class="w-full p-3 bg-blue-600 hover:bg-blue-700 active:scale-95 transition duration-150 rounded-lg font-bold shadow-md shadow-blue-500/50">
+                                    Set New Goals
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                `;
+            }
+
+            function renderChartsView() {
+                // ... (Charts view HTML remains the same)
+                return `
+                    <div class="max-w-3xl mx-auto space-y-8 p-6 bg-white/10 backdrop-blur-md rounded-xl shadow-2xl border border-cyan-500/30">
+                        <h2 class="text-3xl font-bold text-cyan-400 text-center">Activity History</h2>
+                        
+                        <div class="p-4 rounded-lg bg-white/5 border border-gray-700 chart-container">
+                            <h3 class="text-xl font-semibold mb-3 text-purple-400">Steps Over Time</h3>
+                            <canvas id="stepsChart"></canvas>
+                        </div>
+
+                        <div class="p-4 rounded-lg bg-white/5 border border-gray-700 chart-container">
+                            <h3 class="text-xl font-semibold mb-3 text-purple-400">Calories Burned</h3>
+                            <canvas id="caloriesChart"></canvas>
+                        </div>
+                    </div>
+                `;
+            }
+
+            // --- Calculation Logic ---
+
+            function calculateBMI() {
+                const w = appData.profile.weight; // kg
+                const h = appData.profile.height / 100; // meters
+
+                if (h === 0 || w === 0) return { value: 'N/A', category: 'N/A' };
+
+                const bmi = w / (h * h);
+                const value = bmi.toFixed(1);
+                let category;
+
+                if (bmi < 18.5) category = 'Underweight';
+                else if (bmi >= 18.5 && bmi <= 24.9) category = 'Healthy Weight';
+                else if (bmi >= 25 && bmi <= 29.9) category = 'Overweight';
+                else category = 'Obesity';
+
+                return { value, category };
+            }
+
+            function calculateProgress(type) {
+                const today = new Date().toLocaleDateString();
+                let dailyTotal = 0;
+                let goalValue = 0;
+
+                if (type === 'steps') {
+                    dailyTotal = appData.activityLog
+                        .filter(a => new Date(a.date).toLocaleDateString() === today && a.type === 'Steps')
+                        .reduce((sum, a) => sum + parseInt(a.value), 0);
+                    goalValue = appData.goal.dailySteps;
+                } else if (type === 'calories') {
+                    dailyTotal = appData.activityLog
+                        .filter(a => new Date(a.date).toLocaleDateString() === today && a.type !== 'Steps')
+                        .reduce((sum, a) => sum + parseInt(a.calories), 0);
+                    goalValue = appData.goal.dailyCalories;
+                }
+
+                if (goalValue === 0) return 0;
+
+                const progress = (dailyTotal / goalValue) * 100;
+                return Math.min(100, Math.round(progress));
+            }
+
+            // --- Setup Event Handlers ---
+
+            function setupNavigation() {
+                document.getElementById('nav-dashboard')?.addEventListener('click', () => {
+                    currentView = 'dashboard';
+                    renderApp();
                 });
-                
-                // Re-attach listeners for the new remove buttons
-                document.querySelectorAll('.remove-entry').forEach(button => {
-                    button.onclick = handleRemoveEntry;
+                document.getElementById('nav-profile')?.addEventListener('click', () => {
+                    currentView = 'profile';
+                    renderApp();
+                });
+                document.getElementById('nav-charts')?.addEventListener('click', () => {
+                    currentView = 'charts';
+                    renderApp();
+                });
+                document.getElementById('view-profile-btn')?.addEventListener('click', () => {
+                    currentView = 'profile';
+                    renderApp();
                 });
             }
-        }
 
-        // --- Data Update Handler ---
-        function handleDataUpdate(newData) {
-            appData = newData;
-            renderApp();
-        }
+            function setupProfileForms() {
+                document.getElementById('profile-form')?.addEventListener('submit', function(e) {
+                    e.preventDefault();
+                    appData.profile.weight = parseInt(document.getElementById('weight').value);
+                    appData.profile.height = parseInt(document.getElementById('height').value);
+                    appData.profile.age = parseInt(document.getElementById('age').value);
+                    appData.profile.gender = document.getElementById('gender').value;
 
-        // --- Handlers ---
-        
-        function handleProfileSubmit(e) {
-            e.preventDefault();
-            const weight = parseFloat(document.getElementById('weight-input').value);
-            const height = parseFloat(document.getElementById('height-input').value);
-
-            appData.profile.weight = weight;
-            appData.profile.height = height;
+                    saveFirestoreData();
+                    showMessage("Profile updated!");
+                    renderApp();
+                });
+            }
             
-            DataStore.saveData(appData);
-            document.getElementById('profile-modal').close();
-        }
+            function setupGoalForm() {
+                document.getElementById('goal-form')?.addEventListener('submit', function(e) {
+                    e.preventDefault();
+                    appData.goal.dailySteps = parseInt(document.getElementById('daily-steps').value);
+                    appData.goal.dailyCalories = parseInt(document.getElementById('daily-calories').value);
+                    
+                    saveFirestoreData();
+                    showMessage("Goals updated!");
+                    renderApp();
+                });
+            }
 
-        function handleGoalSubmit(e) {
-            e.preventDefault();
-            const goal = parseInt(document.getElementById('goal-input').value, 10);
+            function setupManualEntry() {
+                document.getElementById('manual-entry-form')?.addEventListener('submit', function(e) {
+                    e.preventDefault();
+                    
+                    const type = document.getElementById('activity-type').value;
+                    const value = document.getElementById('activity-value').value;
+                    const calories = document.getElementById('activity-calories').value;
+
+                    if (!value || !calories) {
+                        showMessage("Please fill in both value and calories.");
+                        return;
+                    }
+
+                    appData.activityLog.push({
+                        id: Date.now(),
+                        type: type,
+                        value: parseInt(value),
+                        calories: parseInt(calories),
+                        date: new Date().toISOString()
+                    });
+
+                    saveFirestoreData();
+                    showMessage("Activity logged!");
+                    
+                    // Clear form inputs
+                    document.getElementById('activity-value').value = '';
+                    document.getElementById('activity-calories').value = '';
+
+                    renderApp();
+                });
+            }
             
-            appData.profile.goalCalories = goal;
+            function setupClearLog() {
+                document.getElementById('clear-log-btn')?.addEventListener('click', function() {
+                    if (confirmAction("Are you sure you want to clear your entire activity log? This cannot be undone.")) {
+                        appData.activityLog = [];
+                        saveFirestoreData();
+                        showMessage("Activity log cleared.");
+                        renderApp();
+                    }
+                });
+            }
             
-            DataStore.saveData(appData);
-            document.getElementById('profile-modal').close();
-        }
+            function renderCharts() {
+                // Prepare data for charts
+                const activityData = appData.activityLog;
+                const dailyAggregates = {};
 
-        function handleEntrySubmit(e) {
-            e.preventDefault();
-            const item = document.getElementById('food-item').value.trim();
-            const calories = parseInt(document.getElementById('calorie-count').value, 10);
-            const today = new Date().toISOString().split('T')[0];
+                activityData.forEach(item => {
+                    const date = new Date(item.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                    if (!dailyAggregates[date]) {
+                        dailyAggregates[date] = { steps: 0, calories: 0 };
+                    }
 
-            if (item && calories > 0) {
-                const newEntry = {
-                    id: Date.now(), 
-                    item: item,
-                    calories: calories,
-                    date: today
+                    if (item.type === 'Steps') {
+                        dailyAggregates[date].steps += item.value;
+                    } else {
+                        dailyAggregates[date].calories += item.calories;
+                    }
+                });
+
+                const labels = Object.keys(dailyAggregates).sort((a, b) => new Date(a) - new Date(b));
+                const stepsData = labels.map(date => dailyAggregates[date].steps);
+                const caloriesData = labels.map(date => dailyAggregates[date].calories);
+
+                const baseOptions = {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { labels: { color: '#e5e7eb' } },
+                        title: { display: false }
+                    },
+                    scales: {
+                        x: { ticks: { color: '#9ca3af' }, grid: { color: 'rgba(255, 255, 255, 0.1)' } },
+                        y: { ticks: { color: '#9ca3af' }, grid: { color: 'rgba(255, 255, 255, 0.1)' } }
+                    }
                 };
-                appData.activityLog.push(newEntry);
-                
-                DataStore.saveData(appData);
-                
-                document.getElementById('entry-form').reset();
-                document.getElementById('entry-modal').close();
-            }
-        }
 
-        function handleRemoveEntry(e) {
-            const id = parseInt(e.currentTarget.dataset.id, 10);
+                // Steps Chart
+                const stepsCtx = document.getElementById('stepsChart')?.getContext('2d');
+                if (stepsCtx) {
+                    new Chart(stepsCtx, {
+                        type: 'line',
+                        data: {
+                            labels: labels,
+                            datasets: [{
+                                label: 'Total Steps',
+                                data: stepsData,
+                                borderColor: '#06b6d4', // Cyan
+                                backgroundColor: 'rgba(6, 182, 212, 0.1)',
+                                tension: 0.4,
+                                fill: true,
+                            }]
+                        },
+                        options: { ...baseOptions, aspectRatio: 2 }
+                    });
+                }
+
+                // Calories Chart
+                const caloriesCtx = document.getElementById('caloriesChart')?.getContext('2d');
+                if (caloriesCtx) {
+                    new Chart(caloriesCtx, {
+                        type: 'bar',
+                        data: {
+                            labels: labels,
+                            datasets: [{
+                                label: 'Calories Burned',
+                                data: caloriesData,
+                                backgroundColor: '#a78bfa', // Purple
+                                borderRadius: 4,
+                            }]
+                        },
+                        options: { ...baseOptions, aspectRatio: 2 }
+                    });
+                }
+            }
             
-            if (confirmAction('Are you sure you want to remove this entry?')) {
-                appData.activityLog = appData.activityLog.filter(entry => entry.id !== id);
-                DataStore.saveData(appData);
+            // --- Firebase Initialization ---
+
+            /**
+             * Sets up Firebase app, auth, and user listener.
+             */
+            async function setupFirebaseAndAuth() {
+                if (typeof window.firebase === 'undefined') {
+                    console.error("Firebase SDK not loaded.");
+                    renderApp(); // Render to show error message potentially
+                    return;
+                }
+                
+                // Initialize Firebase App
+                try {
+                    app = window.firebase.initializeApp(firebaseConfig);
+                    db = window.firebase.getFirestore(app);
+                    auth = window.firebase.getAuth(app);
+                    
+                    // Auth State Change Listener
+                    window.firebase.onAuthStateChanged(auth, async (user) => {
+                        if (user) {
+                            userId = user.uid;
+                            // Check if the user has a username registered in their document
+                            await loadFirestoreData();
+                        } else {
+                            // Initial sign-in (anonymous or custom token)
+                            if (initialAuthToken) {
+                                await window.firebase.signInWithCustomToken(auth, initialAuthToken);
+                            } else {
+                                await window.firebase.signInAnonymously(auth);
+                            }
+                            // The onAuthStateChanged listener will fire again with the new user object
+                        }
+                        
+                        // Mark auth as ready *after* initial user check and potential sign-in
+                        if (!isAuthReady) {
+                            isAuthReady = true;
+                            // Re-render to show the Auth Screen with proper state/message
+                            renderApp();
+                        }
+                    });
+
+                } catch (error) {
+                    console.error("Firebase Initialization Error:", error);
+                    showMessage("Failed to connect to backend services.");
+                }
             }
-        }
 
-        function handleClearLog() {
-            if (confirmAction('Are you sure you want to clear ALL log entries for today?')) {
-                const today = new Date().toISOString().split('T')[0];
-                appData.activityLog = appData.activityLog.filter(entry => entry.date !== today);
-                DataStore.saveData(appData);
+
+            // --- Application Initialization ---\
+
+            /**
+             * The main initialization function for the app.
+             */
+            function initApp() {
+                generateParticles();
+                
+                // Set up firebase and auth flow first
+                setupFirebaseAndAuth(); 
+                
+                // Apply initial dark mode styling to static cards (will be updated on render)
+                document.querySelector('.daily-goal-card')?.classList.add('bg-white/10', 'backdrop-blur-md', 'border-purple-500/30', 'border');
+                document.querySelector('.activity-log-card')?.classList.add('bg-white/10', 'backdrop-blur-md', 'border-blue-500/30', 'border');
+
+                // Initial render will show "Connecting to database..." or Auth Screen
+                renderAuthScreen();
+
+                // Ensure window.confirm is explicitly defined as a fallback to avoid errors.
+                window.confirm = confirmAction; 
             }
-        }
-        
-        // --- AUTH Handlers (NEW) ---
-        function handleAuthAction(actionType) {
-            const username = usernameInput.value.trim().toLowerCase();
-            authMessage.textContent = ''; 
 
-            if (!username || username.length < 3) {
-                authMessage.textContent = 'Username must be at least 3 characters.';
-                return;
-            }
+            // Initialize the application when the window loads
+            window.onload = initApp;
 
-            if (actionType === 'login') {
-                DataStore.login(username);
-            } else if (actionType === 'register') {
-                DataStore.register(username);
-            }
-        }
-
-        function handleLogout() {
-            if (confirmAction('Are you sure you want to logout?')) {
-                DataStore.logout();
-            }
-        }
-
-
-        // --- Setup Functions ---
-
-        function setupProfileForms() {
-            document.getElementById('profile-form').onsubmit = handleProfileSubmit;
-        }
-        
-        function setupManualEntry() {
-            document.getElementById('entry-form').onsubmit = handleEntrySubmit;
-        }
-
-        function setupGoalForm() {
-            document.getElementById('goal-form').onsubmit = handleGoalSubmit;
-        }
-
-        function setupClearLog() {
-            document.getElementById('clear-log-btn').onclick = handleClearLog;
-        }
-        
-        function setupAuthListeners() {
-            loginBtn.onclick = () => handleAuthAction('login');
-            registerBtn.onclick = () => handleAuthAction('register');
-            logoutBtn.onclick = handleLogout;
-        }
-
-
-        // --- Particle System Logic (Unchanged) ---
-        function generateParticles() {
-            const container = document.getElementById('particles-container');
-            if (!container) return;
-            const numParticles = 30; 
-            const duration = 15;
-            for (let i = 0; i < numParticles; i++) {
-                const particle = document.createElement('div');
-                particle.className = 'particle';
-                particle.style.left = `${Math.random() * 100}vw`;
-                particle.style.top = `${Math.random() * 100}vh`;
-                const size = Math.random() * 3 + 2; 
-                particle.style.width = `${size}px`;
-                particle.style.height = `${size}px`;
-                particle.style.setProperty('--duration', `${Math.random() * 10 + duration}s`);
-                particle.style.animationDelay = `-${Math.random() * duration}s, -${Math.random() * duration}s`;
-                const flowX = Math.random() * 200 - 100;
-                const flowY = Math.random() * 200 - 100;
-                particle.style.setProperty('--flow-x', `${flowX}px`);
-                particle.style.setProperty('--flow-y', `${flowY}px`);
-                container.appendChild(particle);
-            }
-        }
-
-        function initApp() {
-            // Initialize all form/button listeners
-            setupProfileForms();
-            setupManualEntry();
-            setupGoalForm();
-            setupClearLog();
-            setupAuthListeners(); // NEW: Setup login/register listeners
-            generateParticles(); 
-
-            // Initialize the data store and authentication flow
-            DataStore.init(handleDataUpdate); 
-        }
-
-        window.onload = initApp;
-        window.confirm = confirmAction; 
-
+        })(); // End of IIFE
     </script>
 </body>
 </html>
