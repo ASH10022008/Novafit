@@ -34,7 +34,7 @@
         let db;
         let auth;
         let userId = null;
-        let isAuthReady = false;
+        let isAuthReady = false; // Flag to track readiness
 
         // Ensure global data structure is defined before any save/load operation
         window.data = window.data || {
@@ -75,6 +75,7 @@
                 const dataToSave = JSON.parse(JSON.stringify(window.data)); 
                 await setDoc(docRef, dataToSave);
                 console.log("Data saved to Firestore.");
+                window.messageToast("Data saved successfully!", 'success');
             } catch (error) {
                 console.error("Error saving document:", error);
                 window.messageToast("Error saving data. See console.", 'error');
@@ -155,6 +156,12 @@
                     if (userId) {
                         setupFirestoreListener(); // Start listening for data
                         document.getElementById('user-id-display').textContent = userId;
+                        
+                        // FIX: Enable UI listeners only when authentication is complete
+                        if (typeof window.setupAppListeners === 'function') {
+                            window.setupAppListeners();
+                        }
+
                     } else {
                         // If anonymous sign-in failed, show an error and use default data
                         window.renderApp();
@@ -163,7 +170,6 @@
 
             } catch (error) {
                 console.error("Firebase Initialization Error:", error);
-                // Call the globally available toast function
                 if (typeof window.messageToast === 'function') {
                     window.messageToast("Error initializing Firebase. See console.", 'error');
                 }
@@ -171,8 +177,8 @@
         }
         
         // Expose necessary functions/variables globally for non-module script access
-        window.initializeFirebase = initializeFirebase; // FIX 1: Export initializeFirebase
-        window.saveDataToFirestore = saveDataToFirestore; // FIX 2: Export saveDataToFirestore
+        window.initializeFirebase = initializeFirebase;
+        window.saveDataToFirestore = saveDataToFirestore;
 
     </script>
     <style>
@@ -251,6 +257,34 @@
         .toast-success { background-color: #10b981; color: white; }
         .toast-error { background-color: #ef4444; color: white; }
         
+        /* Loading overlay for entry card */
+        #manual-entry-form-loading {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(15, 23, 42, 0.9); /* slate-900 with opacity */
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 10;
+            transition: opacity 0.3s;
+        }
+        .spinner {
+            border: 4px solid rgba(255, 255, 255, 0.1);
+            border-top: 4px solid #7e22ce;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            animation: spin 1s linear infinite;
+            margin-right: 8px;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
     </style>
 </head>
 <body class="neon-gradient min-h-screen text-white p-4 sm:p-8">
@@ -290,10 +324,10 @@
                     </h2>
                     
                     <div id="progress-container" class="space-y-4">
-                        <!-- Progress Rings will be rendered here -->
+                        <p class="text-center text-gray-500">Loading goals...</p>
                     </div>
 
-                    <button id="goal-edit-button" onclick="showModal('goal-modal')" class="w-full mt-6 py-2 px-4 rounded-xl font-semibold text-sm bg-purple-600 hover:bg-purple-700 transition duration-300 shadow-md shadow-purple-500/50">
+                    <button id="goal-edit-button" onclick="showModal('goal-modal')" class="w-full mt-6 py-2 px-4 rounded-xl font-semibold text-sm bg-purple-600 hover:bg-purple-700 transition duration-300 shadow-md shadow-purple-500/50" disabled>
                         Edit Goals
                     </button>
                 </div>
@@ -305,9 +339,9 @@
                         Profile
                     </h2>
                     <div id="profile-display" class="text-lg space-y-2">
-                        <!-- Profile details will be rendered here -->
+                         <p class="text-center text-gray-500">Loading profile...</p>
                     </div>
-                    <button id="profile-edit-button" onclick="showModal('profile-modal')" class="w-full mt-6 py-2 px-4 rounded-xl font-semibold text-sm bg-cyan-600 hover:bg-cyan-700 transition duration-300 shadow-md shadow-cyan-500/50">
+                    <button id="profile-edit-button" onclick="showModal('profile-modal')" class="w-full mt-6 py-2 px-4 rounded-xl font-semibold text-sm bg-cyan-600 hover:bg-cyan-700 transition duration-300 shadow-md shadow-cyan-500/50" disabled>
                         Update Profile
                     </button>
                 </div>
@@ -318,18 +352,25 @@
             <section class="lg:col-span-2 space-y-8">
                 
                 <!-- Manual Activity Entry Card -->
-                <div class="p-6 rounded-2xl shadow-xl bg-white/10 backdrop-blur-md border-green-500/30 border transition duration-300">
+                <div id="entry-card" class="relative p-6 rounded-2xl shadow-xl bg-white/10 backdrop-blur-md border-green-500/30 border transition duration-300">
                     <h2 class="text-2xl font-bold mb-4 flex items-center text-green-300">
                         <svg class="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v3m0 0v3m0-3h3m-3 0H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
                         Manual Activity Entry
                     </h2>
+                    
+                    <!-- Loading Overlay -->
+                    <div id="manual-entry-form-loading">
+                        <div class="spinner"></div>
+                        <span class="text-gray-400 font-medium">Connecting to NovaFit...</span>
+                    </div>
+
                     <form id="manual-entry-form" class="space-y-4">
-                        <input type="text" id="activity-name" placeholder="Activity Name (e.g., Running)" required class="w-full p-3 rounded-lg bg-gray-700 border border-gray-600 focus:ring-green-500 focus:border-green-500 text-white">
+                        <input type="text" id="activity-name" placeholder="Activity Name (e.g., Running)" required class="w-full p-3 rounded-lg bg-gray-700 border border-gray-600 focus:ring-green-500 focus:border-green-500 text-white" disabled>
                         <div class="grid grid-cols-2 gap-4">
-                            <input type="number" id="activity-calories" placeholder="Calories Burned" required min="1" class="w-full p-3 rounded-lg bg-gray-700 border border-gray-600 focus:ring-green-500 focus:border-green-500 text-white">
-                            <input type="number" id="activity-duration" placeholder="Duration (min)" required min="1" class="w-full p-3 rounded-lg bg-gray-700 border border-gray-600 focus:ring-green-500 focus:border-green-500 text-white">
+                            <input type="number" id="activity-calories" placeholder="Calories Burned" required min="1" class="w-full p-3 rounded-lg bg-gray-700 border border-gray-600 focus:ring-green-500 focus:border-green-500 text-white" disabled>
+                            <input type="number" id="activity-duration" placeholder="Duration (min)" required min="1" class="w-full p-3 rounded-lg bg-gray-700 border border-gray-600 focus:ring-green-500 focus:border-green-500 text-white" disabled>
                         </div>
-                        <button type="submit" class="w-full py-3 px-4 rounded-xl font-bold bg-green-600 hover:bg-green-700 transition duration-300 shadow-lg shadow-green-500/50">
+                        <button type="submit" class="w-full py-3 px-4 rounded-xl font-bold bg-green-600 hover:bg-green-700 transition duration-300 shadow-lg shadow-green-500/50" disabled>
                             Log Activity
                         </button>
                     </form>
@@ -360,7 +401,7 @@
                         <li class="text-center text-white/50 italic">Log is loading from Firebase...</li>
                     </ul>
                     <div class="mt-6 flex justify-end">
-                        <button id="clear-log-button" class="py-2 px-4 rounded-xl font-semibold text-xs bg-red-600 hover:bg-red-700 transition duration-300 shadow-md shadow-red-500/50">
+                        <button id="clear-log-button" class="py-2 px-4 rounded-xl font-semibold text-xs bg-red-600 hover:bg-red-700 transition duration-300 shadow-md shadow-red-500/50" disabled>
                             Clear Log
                         </button>
                     </div>
@@ -520,7 +561,8 @@
 
             // Aggregate data from log
             window.data.log.forEach(entry => {
-                const entryDate = entry.timestamp.split('T')[0]; // Use YYYY-MM-DD
+                // Ensure entry.timestamp is a string, then check if it starts with the date part.
+                const entryDate = String(entry.timestamp).split('T')[0]; 
                 if (weeklyData[entryDate]) {
                     weeklyData[entryDate].calories += entry.calories;
                 }
@@ -577,14 +619,12 @@
         function renderApp() {
             // Calculate today's progress
             const today = new Date().toISOString().split('T')[0];
-            const todayLog = window.data.log.filter(entry => entry.timestamp.startsWith(today));
+            const todayLog = window.data.log.filter(entry => String(entry.timestamp).startsWith(today));
 
             const totalBurned = todayLog.reduce((sum, entry) => sum + entry.calories, 0);
-            // Macro calculations assume non-activity log entries (like food) are handled via separate fields, 
-            // but since we only log activity burn, we'll keep the logic simple for now.
-            const totalProtein = todayLog.reduce((sum, entry) => sum + (entry.protein || 0), 0);
-            const totalCarbs = todayLog.reduce((sum, entry) => sum + (entry.carbs || 0), 0);
-            const totalFat = todayLog.reduce((sum, entry) => sum + (entry.fat || 0), 0);
+            const totalProtein = 0; // Simplified: focusing on activity calories
+            const totalCarbs = 0;
+            const totalFat = 0;
             
             // 1. Render Progress Rings
             const progressContainer = document.getElementById('progress-container');
@@ -634,7 +674,7 @@
             // 4. Render Chart
             renderChart();
             
-             // 5. Update Modals with current data for editing
+            // 5. Update Modals with current data for editing
             document.getElementById('profile-name').value = p.name;
             document.getElementById('profile-gender').value = p.gender;
             document.getElementById('profile-weight').value = p.weight;
@@ -648,8 +688,41 @@
         window.renderApp = renderApp; // Make available globally for module script
 
 
-        // --- Setup Functions ---
+        // --- Setup Functions (Only called when auth is ready) ---
         
+        /**
+         * Enables all interactive elements and attaches listeners.
+         */
+        function setupAppListeners() {
+            // Remove loading state overlay from activity entry
+            document.getElementById('manual-entry-form-loading').style.opacity = '0';
+            setTimeout(() => {
+                document.getElementById('manual-entry-form-loading').style.display = 'none';
+            }, 300);
+
+            // Enable buttons and inputs
+            document.getElementById('goal-edit-button').disabled = false;
+            document.getElementById('profile-edit-button').disabled = false;
+            document.getElementById('clear-log-button').disabled = false;
+
+            document.getElementById('activity-name').disabled = false;
+            document.getElementById('activity-calories').disabled = false;
+            document.getElementById('activity-duration').disabled = false;
+            document.querySelector('#manual-entry-form button[type="submit"]').disabled = false;
+
+            // Attach form handlers
+            setupProfileForms();
+            setupManualEntry();
+            setupGoalForm();
+            setupClearLog();
+
+            // Apply initial dark mode styling to static cards
+            document.querySelector('.daily-goal-card').classList.add('bg-white/10', 'backdrop-blur-md', 'border-purple-500/30', 'border');
+            document.querySelector('.activity-log-card').classList.add('bg-white/10', 'backdrop-blur-md', 'border-blue-500/30', 'border');
+        }
+        window.setupAppListeners = setupAppListeners; // Expose globally to be called by the module script
+
+
         function setupProfileForms() {
             document.getElementById('profile-form').onsubmit = function(event) {
                 event.preventDefault();
@@ -661,7 +734,6 @@
                 // Call the module-exported save function
                 window.saveDataToFirestore();
                 hideModal('profile-modal');
-                messageToast('Profile updated successfully!');
             };
         }
 
@@ -676,7 +748,6 @@
                 // Call the module-exported save function
                 window.saveDataToFirestore();
                 hideModal('goal-modal');
-                messageToast('Goals updated successfully!');
             };
         }
 
@@ -694,7 +765,6 @@
                         calories: calories,
                         duration: duration,
                         timestamp: new Date().toISOString()
-                        // Note: Macros are simplified for this entry, focusing on calorie burn.
                     };
                     
                     window.data.log.push(newActivity);
@@ -706,8 +776,6 @@
 
                     // Call the module-exported save function
                     window.saveDataToFirestore();
-                    messageToast(`${name} logged: ${calories} kcal!`, 'success');
-
                 } else {
                     messageToast('Please fill out all fields correctly.', 'error');
                 }
@@ -779,21 +847,11 @@
          * The main initialization function for the app.
          */
         function initApp() {
-            // initializeFirebase is available on window
-            window.initializeFirebase(); 
-            
-            // Set up forms and listeners (they will trigger Firestore saves via window.saveDataToFirestore)
-            setupProfileForms();
-            setupManualEntry();
-            setupGoalForm();
-            setupClearLog();
+            // Start the visual elements immediately
             generateParticles();
             
-            // Apply initial dark mode styling to static cards
-            document.querySelector('.daily-goal-card').classList.add('bg-white/10', 'backdrop-blur-md', 'border-purple-500/30', 'border');
-            document.querySelector('.activity-log-card').classList.add('bg-white/10', 'backdrop-blur-md', 'border-blue-500/30', 'border');
-            
-            // Initial renderApp() will be triggered by the Firebase listener once data is ready.
+            // Only initialize Firebase. The rest of the setup waits for auth completion inside the module.
+            window.initializeFirebase(); 
         }
 
         // Initialize the application when the window loads
