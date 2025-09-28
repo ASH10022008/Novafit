@@ -41,6 +41,7 @@
             where, 
             getDocs
         };
+        console.log("Firebase SDK modules loaded successfully.");
     </script>
     <!-- Chart.js for data visualization -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -163,7 +164,7 @@
             const COLLECTION_NAME = 'novafit'; // Private user data collection name
             const USER_DOC_PATH = (uid) => `artifacts/${appId}/users/${uid}/${COLLECTION_NAME}/data`;
             
-            // --- Path for public username mapping (6 segments: C/D/C/D/C/D) ---
+            // Path for public username mapping (6 segments: C/D/C/D/C/D)
             const USERNAME_MAPPING_COLLECTION = 'username_mappings'; 
             const USERNAME_DOC_PATH = (username) => `artifacts/${appId}/public/data/${USERNAME_MAPPING_COLLECTION}/${username.toLowerCase()}`;
             // -------------------------------------------------------------------------
@@ -367,7 +368,7 @@
             async function registerUser(username) {
                 console.log("Attempting to register username:", username);
                 if (!db || !userId) {
-                    showMessage("Authentication not ready or User ID missing. Please wait 5 seconds.");
+                    showMessage("Authentication not ready or User ID missing. Please wait.");
                     console.error("Registration failed: DB or UserID missing.", { db: !!db, userId });
                     return;
                 }
@@ -417,7 +418,6 @@
 
             /**
              * Attempts to log in with an existing username.
-             * SIMPLIFIED: If the username exists publicly, we treat the current authenticated user as that user.
              */
             async function loginUser(username) {
                 console.log("Attempting to log in as:", username);
@@ -535,6 +535,7 @@
                 const buttonText = isRegistering ? 'Checking Username...' : 'Register';
 
                 container.innerHTML = `
+                    <div id="message-container"></div>
                     <div class="min-h-[60vh] flex flex-col items-center justify-center p-6 bg-white/10 backdrop-blur-lg rounded-xl shadow-2xl border border-blue-500/30">
                         <h1 class="text-4xl font-extrabold mb-2 text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-cyan-400">
                             Welcome to NovaFit
@@ -617,11 +618,12 @@
             }
 
             function renderDashboardView(bmi, progressSteps, progressCalories) {
+                const today = new Date().toLocaleDateString();
                 const totalSteps = appData.activityLog
-                    .filter(a => a.type === 'steps')
+                    .filter(a => new Date(a.date).toLocaleDateString() === today && a.type === 'Steps')
                     .reduce((sum, a) => sum + parseInt(a.value), 0);
                 const totalCalories = appData.activityLog
-                    .filter(a => a.type !== 'steps')
+                    .filter(a => new Date(a.date).toLocaleDateString() === today && a.type !== 'Steps')
                     .reduce((sum, a) => sum + parseInt(a.calories), 0);
 
                 return `
@@ -1007,8 +1009,10 @@
              */
             async function setupFirebaseAndAuth() {
                 if (typeof window.firebase === 'undefined') {
-                    console.error("Firebase SDK not loaded.");
-                    renderApp(); // Render to show error message potentially
+                    console.error("CRITICAL: Firebase SDK not available. Cannot initialize.");
+                    // Force ready state to show error/auth screen anyway.
+                    isAuthReady = true;
+                    renderApp(); 
                     return;
                 }
                 
@@ -1017,13 +1021,14 @@
                     app = window.firebase.initializeApp(firebaseConfig);
                     db = window.firebase.getFirestore(app);
                     auth = window.firebase.getAuth(app);
+                    console.log("Firebase App and Services initialized.");
                     
                     // Auth State Change Listener
                     window.firebase.onAuthStateChanged(auth, async (user) => {
                         try {
                             if (user) {
                                 userId = user.uid;
-                                console.log("Authentication successful. User ID:", userId);
+                                console.log("Authentication successful via listener. User ID:", userId);
                                 // loadFirestoreData loads data and calls renderApp() once data is ready.
                                 await loadFirestoreData(); 
 
@@ -1039,22 +1044,33 @@
                             }
 
                         } catch (error) {
-                            console.error("Authentication/Data Flow Error:", error);
-                            showMessage("Authentication failed. Please check console (F12).");
+                            console.error("Authentication/Data Flow Error within listener:", error);
+                            showMessage("Authentication failed. Check console for details (F12).");
                         }
                         
-                        // IMPORTANT: Mark auth as ready and render the screen regardless of sign-in attempt success.
-                        // This prevents the 'Connecting to database...' message from hanging indefinitely.
+                        // Mark auth as ready and render the screen after the first full cycle
                         if (!isAuthReady) {
                             isAuthReady = true;
                             console.log("Firebase Auth system ready. Rendering initial screen.");
-                            renderApp(); // This will show the Auth/Login screen since appData.username is null initially
+                            renderApp();
                         }
                     });
 
+                    // GUARANTEED ESCAPE HATCH: If the listener is delayed, force the Auth screen to render after 50ms.
+                    setTimeout(() => {
+                        if (!isAuthReady) {
+                            isAuthReady = true;
+                            console.warn("Forcing Auth Ready state after 50ms timeout. Listener may have been delayed.");
+                            renderApp();
+                        }
+                    }, 50);
+
+
                 } catch (error) {
                     console.error("Firebase Initialization Error:", error);
-                    showMessage("Failed to connect to backend services.");
+                    showMessage("Failed to connect to backend services. Check console.");
+                    isAuthReady = true; // Still force the UI change
+                    renderApp(); 
                 }
             }
 
@@ -1074,7 +1090,7 @@
                 document.querySelector('.daily-goal-card')?.classList.add('bg-white/10', 'backdrop-blur-md', 'border-purple-500/30', 'border');
                 document.querySelector('.activity-log-card')?.classList.add('bg-white/10', 'backdrop-blur-md', 'border-blue-500/30', 'border');
 
-                // Initial render will show "Connecting to database..." or Auth Screen
+                // Initial render will show "Connecting to database..."
                 renderAuthScreen();
 
                 // Ensure window.confirm is explicitly defined as a fallback to avoid errors.
