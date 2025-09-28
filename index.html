@@ -160,10 +160,13 @@
                 activityLog: [], // { id, type, value, calories, date }
             };
 
-            const COLLECTION_NAME = 'novafit';
+            const COLLECTION_NAME = 'novafit'; // Private user data collection name
             const USER_DOC_PATH = (uid) => `artifacts/${appId}/users/${uid}/${COLLECTION_NAME}/data`;
-            // Uses a unique document ID based on the username for easy lookup in the public collection
-            const USERNAME_CHECK_PATH = (username) => `artifacts/${appId}/public/data/${COLLECTION_NAME}/usernames/${username.toLowerCase()}`;
+            
+            // --- Path for public username mapping (6 segments: C/D/C/D/C/D) ---
+            const USERNAME_MAPPING_COLLECTION = 'username_mappings'; 
+            const USERNAME_DOC_PATH = (username) => `artifacts/${appId}/public/data/${USERNAME_MAPPING_COLLECTION}/${username.toLowerCase()}`;
+            // -------------------------------------------------------------------------
 
             // --- Utility Functions ---
 
@@ -359,7 +362,6 @@
 
             /**
              * Registers a new unique username for the currently signed-in user.
-             * This function resolves the "stuck on checking" issue.
              * @param {string} username - The desired unique username.
              */
             async function registerUser(username) {
@@ -376,7 +378,7 @@
                 try {
                     // 1. Check uniqueness
                     console.log("1. Checking if username is unique...");
-                    const usernameRef = firebase.doc(db, USERNAME_CHECK_PATH(username));
+                    const usernameRef = firebase.doc(db, USERNAME_DOC_PATH(username));
                     const usernameDoc = await firebase.getDoc(usernameRef);
 
                     if (usernameDoc.exists()) {
@@ -429,7 +431,7 @@
                 renderAuthScreen();
 
                 try {
-                    const usernameRef = firebase.doc(db, USERNAME_CHECK_PATH(username));
+                    const usernameRef = firebase.doc(db, USERNAME_DOC_PATH(username));
                     const usernameDoc = await firebase.getDoc(usernameRef);
                     
                     if (usernameDoc.exists()) {
@@ -464,8 +466,8 @@
                 const container = document.getElementById('app-container');
                 if (!container) return;
                 
-                // Show Auth Screen if username is null or auth is not ready
-                if (!appData.username || !isAuthReady) {
+                // Show Auth Screen if username is null
+                if (!appData.username) {
                     renderAuthScreen();
                     return;
                 }
@@ -546,7 +548,7 @@
                                 type="text" 
                                 id="username-input" 
                                 placeholder="Enter Unique Username" 
-                                class="w-full p-3 rounded-lg bg-gray-700 text-white placeholder-gray-400 focus:ring-2 focus:ring-purple-500 border border-gray-600 outline-none"
+                                class="w-full p-3 mt-1 rounded-lg bg-gray-700 text-white placeholder-gray-400 focus:ring-2 focus:ring-purple-500 border border-gray-600 outline-none"
                                 value=""
                             />
                             <div class="flex space-x-2">
@@ -569,7 +571,7 @@
                             </div>
                         </div>
 
-                        ${!isAuthReady 
+                        ${!isAuthReady || !userId
                             ? `<p class="mt-4 text-sm text-yellow-400">Connecting to database...</p>` 
                             : `<p class="mt-4 text-sm text-gray-400">User ID: ${userId || 'N/A'}</p>`
                         }
@@ -1018,28 +1020,35 @@
                     
                     // Auth State Change Listener
                     window.firebase.onAuthStateChanged(auth, async (user) => {
-                        if (user) {
-                            userId = user.uid;
-                            console.log("Authentication successful. User ID:", userId);
-                            // Check if the user has a username registered in their document
-                            await loadFirestoreData();
-                        } else {
-                            // Initial sign-in (anonymous or custom token)
-                            if (initialAuthToken) {
-                                console.log("Signing in with custom token...");
-                                await window.firebase.signInWithCustomToken(auth, initialAuthToken);
-                            } else {
-                                console.log("Signing in anonymously...");
-                                await window.firebase.signInAnonymously(auth);
+                        try {
+                            if (user) {
+                                userId = user.uid;
+                                console.log("Authentication successful. User ID:", userId);
+                                // loadFirestoreData loads data and calls renderApp() once data is ready.
+                                await loadFirestoreData(); 
+
+                            } else if (!isAuthReady) { // Only attempt initial sign-in once
+                                // Initial sign-in (anonymous or custom token)
+                                if (initialAuthToken) {
+                                    console.log("Attempting initial sign-in with custom token...");
+                                    await window.firebase.signInWithCustomToken(auth, initialAuthToken);
+                                } else {
+                                    console.log("Attempting initial sign-in anonymously...");
+                                    await window.firebase.signInAnonymously(auth);
+                                }
                             }
-                            // The onAuthStateChanged listener will fire again with the new user object
+
+                        } catch (error) {
+                            console.error("Authentication/Data Flow Error:", error);
+                            showMessage("Authentication failed. Please check console (F12).");
                         }
                         
-                        // Mark auth as ready *after* initial user check and potential sign-in
+                        // IMPORTANT: Mark auth as ready and render the screen regardless of sign-in attempt success.
+                        // This prevents the 'Connecting to database...' message from hanging indefinitely.
                         if (!isAuthReady) {
                             isAuthReady = true;
-                            // Re-render to show the Auth Screen with proper state/message
-                            renderApp();
+                            console.log("Firebase Auth system ready. Rendering initial screen.");
+                            renderApp(); // This will show the Auth/Login screen since appData.username is null initially
                         }
                     });
 
