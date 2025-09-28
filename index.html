@@ -555,11 +555,9 @@
 
             } catch (e) {
                 console.error("Error loading data from localStorage. Resetting to defaults.", e);
-                // Explicitly clear all state on failure to guarantee a clean slate for initApp
                 profiles = [];
                 activeProfileId = null;
                 activeProfileData = { activities: [], dailyGoal: 10000 };
-                throw new Error("Failed to load data due to corruption. State reset."); // Propagate error for initApp to catch
             }
         }
         
@@ -631,21 +629,14 @@
                 activeProfileId = id; // Set the intended new ID
                 
                 // 1. Load all profile data from storage
-                // Use a try-catch for the initial load just in case the overall data store is corrupted
-                let allData = {};
-                try {
-                    allData = JSON.parse(localStorage.getItem(STORAGE_KEY_ALL_DATA) || '{}');
-                } catch (e) {
-                    console.error("Error loading master data during profile switch:", e);
-                    showStatusMessage("Warning", "Data corruption detected during switch. Some history may be missing.", true);
-                    allData = {}; // Ensure it is still an empty object to proceed
-                }
+                const allData = JSON.parse(localStorage.getItem(STORAGE_KEY_ALL_DATA) || '{}');
                 
                 // 2. Load the specific data for the newly set activeProfileId
-                _loadProfileSpecificData(activeProfileId, allData);
+                _loadProfileSpecificData(activeProfileId, allData); 
                 
                 // 3. Save the new active ID
-                localStorage.setItem(STORAGE_KEY_ACTIVE_ID, activeProfileId);
+                localStorage.setItem(STORAGE_KEY_ACTIVE_ID, activeProfileId); 
+
                 renderApp();
                 const profileName = profiles.find(p => p.id === activeProfileId)?.name || 'Unknown User';
                 showStatusMessage("Logged In", `Switched to profile: ${profileName}`);
@@ -655,26 +646,27 @@
                 showStatusMessage("Info", `You are already logged in as: ${profileName}`);
             }
         }
-
+        
         /**
          * Deletes a profile by its ID. (Uses native window.confirm)
          */
         function deleteProfile(id) {
             const profileToDelete = profiles.find(p => p.id === id);
+            
             if (!profileToDelete) {
                 showStatusMessage("Error", "Profile not found.", true);
                 return;
             }
-
+            
             // 1. Confirmation (Use standard browser confirm)
             if (!window.confirm(`Are you sure you want to delete profile: ${profileToDelete.name}? This will remove ALL associated activity data permanently.`)) {
                 showStatusMessage("Cancelled", "Profile deletion cancelled.");
                 return;
             }
-
+            
             // 2. Remove from profiles list
             profiles = profiles.filter(p => p.id !== id);
-
+            
             // 3. Remove data from localStorage (master data object)
             const allData = JSON.parse(localStorage.getItem(STORAGE_KEY_ALL_DATA) || '{}');
             delete allData[id];
@@ -685,9 +677,9 @@
                 activeProfileId = null;
                 activeProfileData = { activities: [], dailyGoal: 10000 };
             }
-
+            
             // 5. Save the updated profiles list and null active ID
-            saveData();
+            saveData(); 
             renderApp();
             showStatusMessage("Success", `Profile '${profileToDelete.name}' has been permanently deleted.`);
             handleNavigation('profile-view');
@@ -702,6 +694,7 @@
         function showStatusMessage(title, message, isError = false) {
             const statusEl = document.getElementById('status-message');
             const color = isError ? 'bg-red-600 shadow-red-500/50' : 'bg-green-600 shadow-green-500/50';
+
             statusEl.innerHTML = `
                 <div class="px-6 py-3 rounded-xl text-white font-semibold ${color} shadow-lg transition-all duration-300">
                     <strong>${title}:</strong> ${message}
@@ -718,17 +711,8 @@
 
         /**
          * Handles navigation between different views.
-         * MODIFIED: Eliminates recursion and explicitly forces 'profile-view' when logged out.
          */
         function handleNavigation(targetViewId) {
-            
-            // If not logged in, force navigation to the profile view, 
-            // regardless of what link was clicked or what the default was.
-            if (!activeProfileId) {
-                targetViewId = 'profile-view';
-            }
-            
-            // 1. Set the active view section
             document.querySelectorAll('.view-section').forEach(section => {
                 section.classList.remove('active');
                 if (section.id === targetViewId) {
@@ -736,28 +720,26 @@
                 }
             });
 
-            // 2. Set the active nav link and handle disabled state
             document.querySelectorAll('.nav-link').forEach(link => {
                 link.classList.remove('active');
-                
-                const isProfileLink = link.dataset.view === 'profile-view';
-
                 if (link.dataset.view === targetViewId) {
                     link.classList.add('active');
                 }
-
-                // If not logged in, disable all links EXCEPT profile
-                if (!activeProfileId && !isProfileLink) {
+            });
+            // Disable nav links if no user is logged in, except the Profile link
+            if (!activeProfileId && targetViewId !== 'profile-view') {
+                 document.querySelectorAll('.nav-link:not(#nav-profile)').forEach(link => {
                     link.disabled = true;
                     link.classList.add('opacity-50', 'cursor-not-allowed');
-                } else {
+                });
+            } else {
+                 document.querySelectorAll('.nav-link').forEach(link => {
                     link.disabled = false;
                     link.classList.remove('opacity-50', 'cursor-not-allowed');
-                }
-            });
+                });
+            }
         }
-
-
+        
         /**
          * Formats time from minutes into Hh Mm string.
          */
@@ -766,8 +748,7 @@
             if (mins < 60) return `${Math.round(mins)} min`;
             return `${Math.floor(mins / 60)}h ${Math.round(mins % 60)}m`;
         }
-
-
+        
         // --- Core Calculation Logic ---
 
         /**
@@ -780,7 +761,7 @@
             // Use the global conversion rate and round to nearest whole step
             return Math.round(distanceKm * KM_TO_STEPS_RATE);
         }
-
+        
         /**
          * Calculates approximate time (in minutes) based on distance (km) and activity speed.
          */
@@ -788,15 +769,14 @@
             if (distanceKm <= 0) {
                 return 0;
             }
-
             const activityData = ACTIVITY_RATES[activityName];
             const speedRateKey = activityData ? activityData.speed_rate_key : 'DEFAULT_TIME';
             const kmPerMin = AVG_SPEED_KM_PER_MIN[speedRateKey];
-
+            
             if (!kmPerMin || kmPerMin <= 0) {
                 return 0; // Avoid division by zero
             }
-
+            
             // Time (min) = Distance (km) / Speed (km/min)
             return Math.round(distanceKm / kmPerMin);
         }
@@ -810,8 +790,8 @@
             if (!activityData || value <= 0) {
                 return 0;
             }
-            // Calorie rate is per value unit (e.g., per step, per minute, per km)
-            const rate = activityData.rate_value; 
+
+            const rate = activityData.rate_value;
             return Math.floor(rate * value);
         }
 
@@ -819,32 +799,30 @@
          * Calculates metrics for the dashboard from the current active profile's activities.
          */
         function calculateMetrics() {
-            // Get today's date in YYYY-MM-DD format for filtering
             const today = new Date().toISOString().split('T')[0];
             const activities = activeProfileData.activities;
             const dailyGoal = activeProfileData.dailyGoal;
-
+            
             const total = activities.reduce((acc, act) => {
                 const dateMatch = act.date === today;
                 
                 acc.totalTime += act.time;
                 acc.totalDistance += act.distance;
                 acc.totalSteps += act.steps;
-                acc.totalCalories += act.calories;
-
+                acc.totalCalories += act.calories; 
+                
                 if (dateMatch) {
                     acc.todaySteps += act.steps;
                 }
-                
                 return acc;
-            }, {
-                totalSteps: 0,
-                totalDistance: 0,
+            }, { 
+                totalSteps: 0, 
+                totalDistance: 0, 
                 totalTime: 0,
-                totalCalories: 0,
+                totalCalories: 0, 
                 todaySteps: 0
             });
-
+            
             return {
                 ...total,
                 totalActivities: activities.length,
@@ -852,9 +830,8 @@
             };
         }
 
-
         // --- UI Rendering Functions ---
-
+        
         /**
          * Renders the Profile View content (profile list, status, and active user details).
          */
@@ -864,7 +841,7 @@
             const detailsDiv = document.getElementById('active-profile-details');
             const currentInfoEl = document.getElementById('current-profile-info');
             const activityCountEl = document.getElementById('current-profile-activity-count');
-
+            
             // elements for update form
             const updateFieldsDiv = document.getElementById('update-profile-fields');
             const updateStatusP = document.getElementById('update-profile-status');
@@ -872,7 +849,7 @@
             // Check for required elements
             if (!listContainer || !listStatus || !detailsDiv || !currentInfoEl || !activityCountEl || !updateFieldsDiv || !updateStatusP) {
                 console.error("renderProfileView: Missing one or more required DOM elements. Aborting render.");
-                return;
+                return; 
             }
 
             listContainer.innerHTML = '';
@@ -882,16 +859,21 @@
                 listStatus.classList.remove('hidden');
             } else {
                 listStatus.classList.add('hidden');
+                
                 profiles.forEach(p => {
                     const isActive = p.id === activeProfileId;
                     const button = document.createElement('button');
-                    button.className = `p-4 rounded-xl font-semibold transition text-left w-full shadow-lg border-2 ${
-                        isActive 
-                        ? 'bg-purple-600/50 border-purple-400 ring-2 ring-purple-400' 
-                        : 'bg-blue-800/30 border-blue-500/20 hover:bg-blue-600/50'
-                    }`;
+                    button.className = `p-4 rounded-xl font-semibold transition text-left w-full shadow-lg border-2 
+                        ${isActive 
+                            ? 'bg-purple-600/50 border-purple-400 ring-2 ring-purple-400' 
+                            : 'bg-blue-800/30 border-blue-500/20 hover:bg-blue-600/50'}`;
                     button.textContent = p.name;
-                    button.onclick = () => switchProfile(p.id);
+                    button.dataset.id = p.id;
+                    
+                    // Re-attaching event listener for dynamic content
+                    button.addEventListener('click', () => {
+                        switchProfile(p.id);
+                    });
                     listContainer.appendChild(button);
                 });
             }
@@ -899,578 +881,880 @@
             // --- Render Active Profile Details & Update Form ---
             if (activeProfileId) {
                 const activeProfile = profiles.find(p => p.id === activeProfileId);
-                const metrics = calculateMetrics(); // Get total activities for the active profile
-
-                if (activeProfile) {
-                    // Update Profile Details Card
-                    currentInfoEl.innerHTML = `
-                        <p class="font-bold text-xl">${activeProfile.name}</p>
-                        <p>Weight: <span class="text-cyan-400">${activeProfile.weight} kg</span></p>
-                        <p>Height: <span class="text-cyan-400">${activeProfile.height} cm</span></p>
-                        <p>Gender: <span class="text-cyan-400">${activeProfile.gender.charAt(0).toUpperCase() + activeProfile.gender.slice(1)}</span></p>
-                    `;
-                    activityCountEl.textContent = metrics.totalActivities;
-
-                    // Populate Update Form
-                    document.getElementById('update-profile-name').value = activeProfile.name;
-                    document.getElementById('update-profile-weight').value = activeProfile.weight;
-                    document.getElementById('update-profile-height').value = activeProfile.height;
-                    document.getElementById('update-profile-gender').value = activeProfile.gender;
-                    
-                    updateStatusP.classList.add('hidden');
-                    updateFieldsDiv.classList.remove('hidden');
-                    detailsDiv.classList.remove('border-green-500/30');
-                    detailsDiv.classList.add('border-purple-500/30');
-                    
-                } else {
-                    // Case: activeProfileId exists but the profile is missing (data corruption)
-                    currentInfoEl.innerHTML = `<p class="text-red-400">Error: Profile data is corrupted. Please select a profile below or create a new one.</p>`;
-                    activityCountEl.textContent = 'ERROR';
-                    updateStatusP.classList.remove('hidden');
-                    updateStatusP.textContent = "Error: Active profile not found in list.";
-                    updateFieldsDiv.classList.add('hidden');
-                    detailsDiv.classList.add('border-green-500/30');
-                    detailsDiv.classList.remove('border-purple-500/30');
-                }
+                const metrics = calculateMetrics(); 
                 
-                document.getElementById('active-profile-display').textContent = `(${activeProfile?.name || 'Error'})`;
+                // Update display block with new fields
+                currentInfoEl.innerHTML = `
+                    <p>Name: <span class="font-bold text-cyan-300">${activeProfile.name}</span></p>
+                    <p>Weight: <span class="font-bold text-yellow-300">${activeProfile.weight ? activeProfile.weight.toFixed(1) + ' kg' : 'N/A'}</span></p>
+                    <p>Height: <span class="font-bold text-yellow-300">${activeProfile.height ? activeProfile.height + ' cm' : 'N/A'}</span></p>
+                    <p>Gender: <span class="font-bold text-yellow-300">${activeProfile.gender.charAt(0).toUpperCase() + activeProfile.gender.slice(1)}</span></p>
+                `;
+                activityCountEl.textContent = metrics.totalActivities.toLocaleString();
+                
+                // Update main header display
+                document.getElementById('active-profile-display').textContent = `(User: ${activeProfile.name})`;
+
+                // Show green border when active
+                detailsDiv.classList.remove('border-purple-500/30');
+                detailsDiv.classList.add('border-green-500/30');
+                
+                // --- Populate and show Update Form ---
+                updateStatusP.classList.add('hidden');
+                updateFieldsDiv.classList.remove('hidden');
+                document.getElementById('update-profile-name').value = activeProfile.name;
+                document.getElementById('update-profile-weight').value = activeProfile.weight || '';
+                document.getElementById('update-profile-height').value = activeProfile.height || '';
+                document.getElementById('update-profile-gender').value = activeProfile.gender || 'other';
 
             } else {
-                // Not logged in
-                currentInfoEl.innerHTML = '<p>Please create or select a profile to begin tracking.</p>';
+                currentInfoEl.innerHTML = `<p>Please <span class="text-purple-300">create</span> a new profile or <span class="text-blue-300">select</span> an existing one below.</p>`;
                 activityCountEl.textContent = '0';
-                updateStatusP.classList.remove('hidden');
-                updateStatusP.textContent = "Please log in to update your profile.";
-                updateFieldsDiv.classList.add('hidden');
                 document.getElementById('active-profile-display').textContent = '';
-                detailsDiv.classList.add('border-green-500/30');
-                detailsDiv.classList.remove('border-purple-500/30');
+                 // Show purple border when inactive/default
+                detailsDiv.classList.add('border-purple-500/30');
+                detailsDiv.classList.remove('border-green-500/30');
+                
+                // --- Hide Update Form ---
+                updateStatusP.classList.remove('hidden');
+                updateFieldsDiv.classList.add('hidden');
             }
         }
 
 
         /**
-         * Renders the main dashboard view metrics and activity log.
+         * Updates the calculated calories, steps, and time display fields.
          */
-        function renderDashboard(metrics) {
-            const today = new Date().toISOString().split('T')[0];
-            const activitiesToday = activeProfileData.activities.filter(a => a.date === today);
+        function updateCaloriesDisplay() {
+            const activityName = document.getElementById('activity-name').value;
+            const activityType = document.getElementById('activity-type').value;
+            const activityRateType = ACTIVITY_RATES[activityName]?.rate_type;
 
-            // --- 1. Metric Cards ---
-            const cardData = [
-                { title: "Today's Steps", value: metrics.todaySteps.toLocaleString(), unit: 'steps', color: 'purple' },
-                { title: "Total Activities", value: metrics.totalActivities, unit: 'sessions', color: 'blue' },
-                { title: "Total Distance", value: metrics.totalDistance.toFixed(1), unit: 'km', color: 'cyan' },
-                { title: "Total Calories", value: metrics.totalCalories.toLocaleString(), unit: 'kcal', color: 'red' },
-                { title: "Total Time", value: formatTime(metrics.totalTime), unit: '', color: 'green' },
-            ];
+            let valueForCalorieCalc = 0; // The value used for calorie calculation (steps, distance, or time)
+            let calculatedSteps = 0;
+            let calculatedDistance = 0;
+            let calculatedTime = 0;
             
-            const metricsContainer = document.getElementById('metric-cards');
-            metricsContainer.innerHTML = cardData.map(card => `
-                <div class="bg-gray-800/50 p-4 rounded-xl shadow-inner border border-${card.color}-500/30">
-                    <p class="text-sm font-medium text-gray-400">${card.title}</p>
-                    <p class="text-2xl font-bold text-${card.color}-300 mt-1">
-                        ${card.value} <span class="text-base font-normal">${card.unit}</span>
-                    </p>
+            // 1. Determine base values (input value, distance, steps, and time)
+            if (activityType === 'steps') {
+                const stepsInput = parseInt(document.getElementById('activity-steps').value) || 0;
+                calculatedSteps = stepsInput;
+                calculatedDistance = stepsInput * STEPS_TO_KM_RATE; // Calculate distance from steps
+                
+                // Time is calculated from the derived distance
+                calculatedTime = calculateTime(activityName, calculatedDistance); 
+                
+                // Use steps for calorie calculation if the activity rate type is steps
+                if (activityRateType === 'steps') {
+                    valueForCalorieCalc = calculatedSteps; 
+                } else {
+                    // Otherwise, use the derived distance
+                    valueForCalorieCalc = calculatedDistance;
+                }
+                
+            } else if (activityType === 'distance') {
+                const distanceInput = parseFloat(document.getElementById('activity-distance').value) || 0;
+                calculatedDistance = distanceInput;
+                
+                // Calculate steps and time from the input distance
+                calculatedSteps = calculateSteps(distanceInput); 
+                calculatedTime = calculateTime(activityName, distanceInput);
+                
+                // Decide which value (distance or steps) to use for calorie calculation
+                if (activityRateType === 'steps') {
+                    valueForCalorieCalc = calculatedSteps; 
+                } else {
+                    valueForCalorieCalc = calculatedDistance;
+                }
+                
+            } else if (activityType === 'time') {
+                const timeInput = parseInt(document.getElementById('activity-time').value) || 0;
+                calculatedTime = timeInput;
+                valueForCalorieCalc = timeInput; // Use time for calorie calculation
+                
+                // Steps and distance remain 0 for time-based entries without more complex data
+            }
+            
+            // 2. Update Display Fields
+            
+            // Steps
+            const stepsDisplayEl = document.getElementById('activity-calculated-steps');
+            if (stepsDisplayEl) {
+                stepsDisplayEl.textContent = `${calculatedSteps.toLocaleString()} steps`;
+                stepsDisplayEl.dataset.steps = calculatedSteps; 
+            }
+            
+            // Time
+            const timeDisplayEl = document.getElementById('activity-calculated-time');
+            if (timeDisplayEl) {
+                timeDisplayEl.textContent = formatTime(calculatedTime);
+                timeDisplayEl.dataset.time = calculatedTime; // Store in minutes
+            }
+
+            // Calories
+            const calculatedCalories = calculateCalories(activityName, valueForCalorieCalc); 
+            
+            const caloriesDisplayEl = document.getElementById('activity-calories-display');
+            caloriesDisplayEl.textContent = `${calculatedCalories.toLocaleString()} kcal`;
+            caloriesDisplayEl.dataset.calories = calculatedCalories; 
+        }
+
+        /**
+         * Renders the metric cards based on calculated data.
+         * FIX: Reverted to dark theme styling for dashboard metric cards.
+         */
+        function updateMetricCards(metrics) {
+            const container = document.getElementById('metric-cards');
+            // Base class for dark/transparent cards
+            const baseClass = 'metric-card p-4 rounded-xl shadow-xl transition transform hover:scale-[1.02] bg-white/10 backdrop-blur-md border border-gray-700/50';
+            
+            container.innerHTML = `
+                <div class="${baseClass} hover:shadow-purple-400/50">
+                    <p class="text-sm text-gray-300">Total Activities</p>
+                    <p class="text-3xl font-bold text-purple-400">${metrics.totalActivities}</p>
                 </div>
-            `).join('');
+                <div class="${baseClass} hover:shadow-blue-400/50">
+                    <p class="text-sm text-gray-300">Total Time</p>
+                    <p class="text-3xl font-bold text-blue-400">${formatTime(metrics.totalTime)}</p>
+                </div>
+                <div class="${baseClass} hover:shadow-cyan-400/50">
+                    <p class="text-sm text-gray-300">Total Distance</p>
+                    <p class="text-3xl font-bold text-cyan-400">${metrics.totalDistance.toFixed(1)} <span class="text-lg font-normal">km</span></p>
+                </div>
+                <div class="${baseClass} hover:shadow-yellow-400/50">
+                    <p class="text-sm text-gray-300">Total Steps</p>
+                    <p class="text-3xl font-bold text-yellow-400">${metrics.totalSteps.toLocaleString()}</p>
+                </div>
+                <div class="${baseClass} hover:shadow-red-400/50">
+                    <p class="text-sm text-gray-300">Total Calories</p>
+                    <p class="text-3xl font-bold text-red-400">${metrics.totalCalories.toLocaleString()} <span class="text-lg font-normal">kcal</span></p>
+                </div>
+            `;
+        }
 
-            // --- 2. Steps Goal Progress Ring ---
-            const progressCircle = document.getElementById('steps-progress');
-            const progressPercentEl = document.getElementById('progress-percent');
-            const goalEl = document.getElementById('current-goal');
-            const stepsEl = document.getElementById('current-steps');
-
-            const radius = 45;
-            const circumference = 2 * Math.PI * radius;
-            const offset = circumference - (metrics.stepsGoalProgress / 100) * circumference;
-
-            progressCircle.style.strokeDasharray = `${circumference} ${circumference}`;
-            progressCircle.style.strokeDashoffset = offset;
-            progressPercentEl.textContent = `${Math.floor(metrics.stepsGoalProgress)}%`;
+        /**
+         * Updates the daily goal progress card.
+         */
+        function updateDailyGoalCard(metrics) {
+            const circle = document.getElementById('steps-progress');
+            const radius = circle.r.baseVal.value, circ = 2 * Math.PI * radius;
             
-            goalEl.textContent = activeProfileData.dailyGoal.toLocaleString();
-            stepsEl.textContent = metrics.todaySteps.toLocaleString();
-
-
-            // --- 3. Activity List ---
-            const activityListEl = document.getElementById('activity-list');
-            activityListEl.innerHTML = '';
+            const offset = circ - (metrics.stepsGoalProgress / 100) * circ;
             
-            if (activitiesToday.length === 0) {
-                activityListEl.innerHTML = `<tr><td colspan="6" class="p-4 text-center text-gray-500">No activities logged today. Go log one!</td></tr>`;
-            } else {
-                activitiesToday.slice().reverse().forEach((activity, index) => {
-                    const row = document.createElement('tr');
-                    const originalIndex = activeProfileData.activities.findIndex(a => a.id === activity.id); // Find the index in the original array
-                    
-                    row.className = 'border-b border-gray-800 hover:bg-gray-800/50 transition';
-                    row.innerHTML = `
-                        <td class="p-4 font-semibold text-purple-200">${activity.name}</td>
-                        <td class="p-4 text-right text-gray-300">${formatTime(activity.time)}</td>
-                        <td class="p-4 text-right text-gray-300">${activity.distance.toFixed(2)} km</td>
-                        <td class="p-4 text-right text-red-300">${activity.calories} kcal</td>
-                        <td class="p-4 text-right text-yellow-300">${activity.steps.toLocaleString()} steps</td>
+            circle.style.strokeDasharray = `${circ} ${circ}`;
+            circle.style.strokeDashoffset = offset;
+
+            document.getElementById('progress-percent').textContent = `${Math.round(metrics.stepsGoalProgress)}%`;
+            document.getElementById('current-goal').textContent = activeProfileData.dailyGoal.toLocaleString();
+            document.getElementById('current-steps').textContent = metrics.todaySteps.toLocaleString();
+            
+            document.getElementById('current-goal-display').textContent = activeProfileData.dailyGoal.toLocaleString(); // Update goals view too
+        }
+
+        /**
+         * Renders the activity log table.
+         */
+        function renderActivityLog() {
+            const listContainer = document.getElementById('activity-list');
+            listContainer.innerHTML = '';
+            
+            const activities = activeProfileData.activities;
+            // Sort by ID (timestamp) descending for newest first
+            const sortedActivities = [...activities].sort((a, b) => b.id - a.id);
+
+            sortedActivities.forEach(act => {
+                let time = act.time ? formatTime(act.time) : '-';
+                let dist = act.distance > 0 ? act.distance.toFixed(1) : '-';
+                let outcomeHtml = '';
+                
+                // If it was logged as distance, show distance and the logged steps
+                if (act.type === 'distance' && act.distance > 0) {
+                    outcomeHtml = `${act.distance.toFixed(1)} km (${act.steps.toLocaleString()} steps)`;
+                } 
+                // If it was logged as steps, show steps
+                else if (act.type === 'steps' && act.steps > 0) {
+                    outcomeHtml = `${act.steps.toLocaleString()} steps`;
+                }
+                // If it was logged as time, show time logged
+                else {
+                    outcomeHtml = 'Time logged';
+                }
+
+                listContainer.insertAdjacentHTML('beforeend', `
+                    <tr class="list-item-text border-b border-gray-700/50 hover:bg-gray-800/50 transition">
+                        <td class="p-4 text-gray-300">${act.date} - ${act.name}</td>
+                        <td class="p-4 text-right font-mono">${time}</td>
+                        <td class="p-4 text-right font-mono">${dist}</td>
+                        <td class="p-4 text-right font-mono text-red-400">${act.calories > 0 ? act.calories.toLocaleString() : '-'}</td>
+                        <td class="p-4 text-right font-mono text-sm text-purple-300">${outcomeHtml}</td>
                         <td class="p-4 text-center">
-                            <button data-index="${originalIndex}" class="delete-activity-btn text-red-500 hover:text-red-400 transition" title="Delete Activity">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
+                            <button data-id="${act.id}" 
+                                    class="delete-activity-btn text-xs font-semibold px-2 py-1 rounded bg-red-800/50 hover:bg-red-700/70 transition">
+                                Delete
                             </button>
                         </td>
-                    `;
-                    activityListEl.appendChild(row);
-                });
-            }
-        }
-
-        /**
-         * Renders the Analytics charts.
-         */
-        function renderAnalytics(metrics) {
-            // Check if user is logged in (handled in renderApp but good practice to check here too)
-            if (!activeProfileId) return;
-
-            // Group activities by date for the last 7 days
-            const today = new Date();
-            const pastSevenDays = Array(7).fill(0).map((_, i) => {
-                const d = new Date(today);
-                d.setDate(today.getDate() - i);
-                return d.toISOString().split('T')[0]; // YYYY-MM-DD
-            }).reverse(); // Reverse to get chronological order
-
-            const dailyData = activeProfileData.activities.reduce((acc, act) => {
-                const date = act.date;
-                if (pastSevenDays.includes(date)) {
-                    acc[date] = acc[date] || { steps: 0, calories: 0, count: 0 };
-                    acc[date].steps += act.steps;
-                    acc[date].calories += act.calories;
-                    acc[date].count += 1;
-                }
-                return acc;
-            }, {});
-
-            // Prepare chart data arrays
-            const stepsData = pastSevenDays.map(date => dailyData[date]?.steps || 0);
-            const caloriesData = pastSevenDays.map(date => dailyData[date]?.calories || 0);
-            const activityCountData = pastSevenDays.map(date => dailyData[date]?.count || 0);
-            
-            const labels = pastSevenDays.map(date => {
-                const [year, month, day] = date.split('-');
-                return `${month}/${day}`; // MM/DD
+                    </tr>
+                `);
             });
 
-            // --- Chart 1: Steps Tracker ---
-            const stepsCtx = document.getElementById('steps-chart').getContext('2d');
-            if (stepsChart) stepsChart.destroy();
-            stepsChart = new Chart(stepsCtx, {
+            // Set up click listeners for the delete buttons (must be done after rendering dynamic content)
+            document.querySelectorAll('.delete-activity-btn').forEach(button => {
+                button.addEventListener('click', (e) => {
+                    const activityId = parseInt(e.target.dataset.id);
+                    deleteActivity(activityId); 
+                });
+            });
+
+            if (activities.length === 0) {
+                listContainer.innerHTML = '<tr><td colspan="6" class="p-4 text-center text-gray-500">No activities logged yet for this profile.</td></tr>';
+            }
+        }
+        
+        // --- ADDED: Chart Data Processing Functions ---
+
+        /**
+         * Processes activities from the last 7 days to get total steps per day of the week.
+         */
+        function getWeeklyStepsData() {
+            const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+            const data = Array(7).fill(0);
+            const today = new Date();
+            const sevenDaysAgo = new Date();
+            sevenDaysAgo.setDate(today.getDate() - 6); // Look at today + the past 6 days
+            sevenDaysAgo.setHours(0,0,0,0);
+
+            activeProfileData.activities.forEach(act => {
+                const activityDate = new Date(act.date + 'T00:00:00'); // Ensure local timezone
+                if (activityDate >= sevenDaysAgo) {
+                    const dayIndex = activityDate.getDay();
+                    data[dayIndex] += act.steps;
+                }
+            });
+
+            // Rotate array so today is the last day
+            const dayOfWeek = today.getDay();
+            const rotatedDays = [...days.slice(dayOfWeek + 1), ...days.slice(0, dayOfWeek + 1)];
+            const rotatedData = [...data.slice(dayOfWeek + 1), ...data.slice(0, dayOfWeek + 1)];
+
+            return { labels: rotatedDays, data: rotatedData };
+        }
+        
+        /**
+         * Processes activities from the last 7 days to get total calories per day of the week.
+         */
+        function getWeeklyCaloriesData() {
+            const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+            const data = Array(7).fill(0);
+            const today = new Date();
+            const sevenDaysAgo = new Date();
+            sevenDaysAgo.setDate(today.getDate() - 6);
+            sevenDaysAgo.setHours(0,0,0,0);
+
+            activeProfileData.activities.forEach(act => {
+                const activityDate = new Date(act.date + 'T00:00:00');
+                if (activityDate >= sevenDaysAgo) {
+                    const dayIndex = activityDate.getDay();
+                    data[dayIndex] += act.calories;
+                }
+            });
+            
+            // Rotate array so today is the last day
+            const dayOfWeek = today.getDay();
+            const rotatedDays = [...days.slice(dayOfWeek + 1), ...days.slice(0, dayOfWeek + 1)];
+            const rotatedData = [...data.slice(dayOfWeek + 1), ...data.slice(0, dayOfWeek + 1)];
+
+            return { labels: rotatedDays, data: rotatedData };
+        }
+        
+        /**
+         * Counts the frequency of each activity logged in the current week.
+         */
+        function getActivityFrequencyData() {
+            const counts = {};
+            const today = new Date();
+            const sevenDaysAgo = new Date();
+            sevenDaysAgo.setDate(today.getDate() - 6);
+            sevenDaysAgo.setHours(0,0,0,0);
+            
+            activeProfileData.activities.forEach(act => {
+                const activityDate = new Date(act.date + 'T00:00:00');
+                if (activityDate >= sevenDaysAgo) {
+                    counts[act.name] = (counts[act.name] || 0) + 1;
+                }
+            });
+            
+            // Sort by count descending
+            const sortedActivities = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+            
+            const labels = sortedActivities.map(entry => entry[0]);
+            const data = sortedActivities.map(entry => entry[1]);
+
+            return { labels, data };
+        }
+        
+        // --- ADDED: Chart Rendering Functions ---
+
+        /**
+         * Renders the weekly steps line chart.
+         */
+        function renderStepsChart(chartData) {
+            const ctx = document.getElementById('steps-chart').getContext('2d');
+            
+            // Destroy previous chart instance if it exists to prevent flickering
+            if (stepsChart) {
+                stepsChart.destroy();
+            }
+
+            stepsChart = new Chart(ctx, {
                 type: 'line',
                 data: {
-                    labels: labels,
+                    labels: chartData.labels,
                     datasets: [{
-                        label: 'Steps',
-                        data: stepsData,
-                        backgroundColor: 'rgba(251, 191, 36, 0.2)', // yellow-400
-                        borderColor: '#facc15', // yellow-400
+                        label: 'Steps per Day',
+                        data: chartData.data,
+                        backgroundColor: 'rgba(251, 191, 36, 0.2)',
+                        borderColor: 'rgba(251, 191, 36, 1)',
                         borderWidth: 2,
-                        tension: 0.4,
-                        pointRadius: 5
+                        tension: 0.3,
+                        pointBackgroundColor: 'rgba(251, 191, 36, 1)',
+                        pointRadius: 4,
                     }]
                 },
                 options: {
                     responsive: true,
-                    maintainAspectRatio: true,
+                    plugins: { legend: { display: false }, tooltip: { backgroundColor: '#1f2937' } },
                     scales: {
-                        y: { beginAtZero: true, grid: { color: 'rgba(255, 255, 255, 0.1)' }, ticks: { color: '#e5e7eb' } },
-                        x: { grid: { display: false }, ticks: { color: '#e5e7eb' } }
-                    },
-                    plugins: { legend: { display: false }, tooltip: { backgroundColor: '#334155', titleColor: '#fff', bodyColor: '#fff' } }
-                }
-            });
-
-            // --- Chart 2: Activity Frequency ---
-            const activityCtx = document.getElementById('activity-chart').getContext('2d');
-            if (activityChart) activityChart.destroy();
-            activityChart = new Chart(activityCtx, {
-                type: 'bar',
-                data: {
-                    labels: labels,
-                    datasets: [{
-                        label: 'Activities Logged',
-                        data: activityCountData,
-                        backgroundColor: '#4ade80', // green-400
-                        borderColor: '#22c55e',
-                        borderWidth: 1,
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: true,
-                    scales: {
-                        y: { beginAtZero: true, ticks: { precision: 0, color: '#e5e7eb' }, grid: { color: 'rgba(255, 255, 255, 0.1)' } },
-                        x: { grid: { display: false }, ticks: { color: '#e5e7eb' } }
-                    },
-                    plugins: { legend: { display: false }, tooltip: { backgroundColor: '#334155', titleColor: '#fff', bodyColor: '#fff' } }
-                }
-            });
-
-            // --- Chart 3: Calorie Burn ---
-            const caloriesCtx = document.getElementById('calories-chart').getContext('2d');
-            if (caloriesChart) caloriesChart.destroy();
-            caloriesChart = new Chart(caloriesCtx, {
-                type: 'bar',
-                data: {
-                    labels: labels,
-                    datasets: [{
-                        label: 'Calories Burned (kcal)',
-                        data: caloriesData,
-                        backgroundColor: '#f87171', // red-400
-                        borderColor: '#ef4444',
-                        borderWidth: 1,
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: true,
-                    scales: {
-                        y: { beginAtZero: true, grid: { color: 'rgba(255, 255, 255, 0.1)' }, ticks: { color: '#e5e7eb' } },
-                        x: { grid: { display: false }, ticks: { color: '#e5e7eb' } }
-                    },
-                    plugins: { legend: { display: false }, tooltip: { backgroundColor: '#334155', titleColor: '#fff', bodyColor: '#fff' } }
-                }
-            });
-        }
-        
-        /**
-         * The main rendering function, called after data is loaded or changed.
-         * MODIFIED: Uses an explicit default view based on activeProfileId status.
-         */
-        function renderApp() {
-            renderProfileView(); 
-            
-            // Only render dashboard and analytics if a user is logged in
-            if (activeProfileId) {
-                const metrics = calculateMetrics();
-                
-                // Dashboard
-                renderDashboard(metrics);
-                document.getElementById('current-goal-display').textContent = activeProfileData.dailyGoal.toLocaleString();
-
-                // Analytics
-                renderAnalytics(metrics);
-                
-                // Show analytics content
-                document.getElementById('analytics-content').classList.remove('hidden');
-                document.getElementById('analytics-login-prompt').classList.add('hidden');
-                
-            } else {
-                // Hide analytics content and show login prompt
-                document.getElementById('analytics-content').classList.add('hidden');
-                document.getElementById('analytics-login-prompt').classList.remove('hidden');
-            }
-            
-            // Set the view. If logged in, default to dashboard. If logged out, default to profile.
-            const defaultView = activeProfileId ? 'dashboard-view' : 'profile-view';
-            handleNavigation(document.querySelector('.nav-link.active')?.dataset.view || defaultView);
-        }
-
-
-        // --- Event Listener Setup ---
-
-        /**
-         * Sets up form submissions for profile creation and updates.
-         */
-        function setupProfileForms() {
-            document.getElementById('create-profile-form').addEventListener('submit', (e) => {
-                e.preventDefault();
-                const formData = Object.fromEntries(new FormData(e.target).entries());
-                createProfile(formData);
-                e.target.reset(); // Clear form on success
-            });
-            
-            document.getElementById('update-profile-form').addEventListener('submit', (e) => {
-                e.preventDefault();
-                const formData = Object.fromEntries(new FormData(e.target).entries());
-                updateProfileDetails(formData);
-            });
-            
-            document.getElementById('delete-profile-btn').addEventListener('click', () => {
-                if (activeProfileId) {
-                    deleteProfile(activeProfileId);
-                } else {
-                    showStatusMessage("Error", "No active profile to delete.", true);
-                }
-            });
-        }
-        
-        /**
-         * Sets up navigation links.
-         */
-        function setupNavigation() {
-            document.querySelectorAll('.nav-link').forEach(link => {
-                link.addEventListener('click', (e) => {
-                    // Check if the link is disabled before allowing navigation
-                    if (!e.currentTarget.disabled) {
-                        handleNavigation(e.target.dataset.view);
-                    }
-                });
-            });
-        }
-        
-        /**
-         * Sets up the activity logging form and associated calculations.
-         */
-        function setupManualEntry() {
-            const form = document.getElementById('manual-entry-form');
-            const activityTypeSelect = document.getElementById('activity-type');
-            const activityNameSelect = document.getElementById('activity-name');
-            const stepInputDiv = document.getElementById('step-input');
-            const distanceInputDiv = document.getElementById('distance-input');
-            const timeInputDiv = document.getElementById('time-input');
-            const dateInput = document.getElementById('activity-date');
-
-            // Set today's date as default
-            dateInput.value = new Date().toISOString().split('T')[0];
-
-            // Populate Activity Name Select
-            Object.keys(ACTIVITY_RATES).forEach(name => {
-                const option = document.createElement('option');
-                option.value = name;
-                option.textContent = name;
-                activityNameSelect.appendChild(option);
-            });
-            
-            // Set default activity (Running or Walking if available)
-            activityNameSelect.value = ACTIVITY_RATES.Running ? 'Running' : Object.keys(ACTIVITY_RATES)[0];
-
-
-            // Helper function to update input visibility based on measurement type
-            function updateInputVisibility() {
-                const type = activityTypeSelect.value;
-                stepInputDiv.classList.toggle('hidden', type !== 'steps');
-                distanceInputDiv.classList.toggle('hidden', type !== 'distance');
-                timeInputDiv.classList.toggle('hidden', type !== 'time');
-
-                // Reset inputs when switching type
-                document.getElementById('activity-steps').value = '';
-                document.getElementById('activity-distance').value = '';
-                document.getElementById('activity-time').value = '';
-                
-                updateCalculations();
-            }
-
-            // Helper function to calculate and update the derived fields
-            function updateCalculations() {
-                const type = activityTypeSelect.value;
-                const activityName = activityNameSelect.value;
-                let primaryValue = 0;
-                let time = 0;
-                let steps = 0;
-                let distanceKm = 0;
-
-                // 1. Determine primary value and calculate the others
-                if (type === 'steps') {
-                    primaryValue = parseInt(document.getElementById('activity-steps').value) || 0;
-                    distanceKm = primaryValue * STEPS_TO_KM_RATE;
-                    steps = primaryValue;
-                    time = calculateTime(activityName, distanceKm); // Calculate time from distance
-                } else if (type === 'distance') {
-                    primaryValue = parseFloat(document.getElementById('activity-distance').value) || 0;
-                    distanceKm = primaryValue;
-                    steps = calculateSteps(distanceKm); // Calculate steps from distance
-                    time = calculateTime(activityName, distanceKm); // Calculate time from distance
-                } else if (type === 'time') {
-                    primaryValue = parseInt(document.getElementById('activity-time').value) || 0;
-                    time = primaryValue;
-                    
-                    // Estimate distance from time using average speed
-                    const activityData = ACTIVITY_RATES[activityName];
-                    const speedRateKey = activityData ? activityData.speed_rate_key : 'DEFAULT_TIME';
-                    const kmPerMin = AVG_SPEED_KM_PER_MIN[speedRateKey];
-                    distanceKm = primaryValue * kmPerMin; 
-                    
-                    steps = calculateSteps(distanceKm); // Calculate steps from distance
-                }
-
-                // 2. Calculate calories
-                // We calculate calories based on the activity's preferred measurement type/value
-                const rateType = ACTIVITY_RATES[activityName].rate_type;
-                let caloriesValue = 0;
-                if (rateType === 'steps') {
-                    caloriesValue = calculateCalories(activityName, steps);
-                } else if (rateType === 'distance') {
-                    caloriesValue = calculateCalories(activityName, distanceKm);
-                } else if (rateType === 'time') {
-                    caloriesValue = calculateCalories(activityName, time);
-                }
-                
-                // 3. Update display fields
-                document.getElementById('activity-calculated-steps').textContent = `${steps.toLocaleString()} steps`;
-                document.getElementById('activity-calculated-steps').dataset.steps = steps;
-                
-                document.getElementById('activity-calculated-time').textContent = formatTime(time);
-                document.getElementById('activity-calculated-time').dataset.time = time;
-                
-                document.getElementById('activity-calories-display').textContent = `${caloriesValue.toLocaleString()} kcal`;
-                document.getElementById('activity-calories-display').dataset.calories = caloriesValue;
-            }
-
-            // Event listeners for changes
-            activityTypeSelect.addEventListener('change', updateInputVisibility);
-            activityNameSelect.addEventListener('change', updateCalculations);
-            document.getElementById('activity-steps').addEventListener('input', updateCalculations);
-            document.getElementById('activity-distance').addEventListener('input', updateCalculations);
-            document.getElementById('activity-time').addEventListener('input', updateCalculations);
-            
-            // Initial setup
-            updateInputVisibility();
-
-
-            // Handle form submission
-            form.addEventListener('submit', (e) => {
-                e.preventDefault();
-                
-                if (!activeProfileId) {
-                    showStatusMessage("Error", "Please log in to log an activity.", true);
-                    return;
-                }
-
-                const calculatedSteps = parseInt(document.getElementById('activity-calculated-steps').dataset.steps);
-                const calculatedTime = parseInt(document.getElementById('activity-calculated-time').dataset.time);
-                const calculatedCalories = parseInt(document.getElementById('activity-calories-display').dataset.calories);
-
-                // Use the calculated distance/time/steps from updateCalculations()
-                const activityDistance = parseFloat(document.getElementById('activity-distance').value) || 0;
-                
-                const newActivity = {
-                    id: Date.now().toString(),
-                    name: activityNameSelect.value,
-                    date: dateInput.value,
-                    time: calculatedTime, 
-                    distance: calculatedDistance(activityNameSelect.value, calculatedTime),
-                    steps: calculatedSteps,
-                    calories: calculatedCalories,
-                    loggedAt: new Date().toISOString()
-                };
-                
-                // If a manual distance was entered, use it for saving the activity
-                if (activityTypeSelect.value === 'distance' && activityDistance > 0) {
-                     newActivity.distance = activityDistance;
-                }
-                // If a manual step count was entered, use it for saving the activity
-                else if (activityTypeSelect.value === 'steps' && parseInt(document.getElementById('activity-steps').value) > 0) {
-                    // Recalculate everything else based on the entered steps
-                    newActivity.steps = parseInt(document.getElementById('activity-steps').value);
-                    newActivity.distance = newActivity.steps * STEPS_TO_KM_RATE;
-                    newActivity.time = calculateTime(newActivity.name, newActivity.distance);
-                    newActivity.calories = calculateCalories(newActivity.name, newActivity.steps); // Assuming steps is the primary rate for walking/running
-                }
-                // If a manual time was entered, use it for saving the activity
-                else if (activityTypeSelect.value === 'time' && calculatedTime > 0) {
-                     // The calculated values are based on the entered time, so we are good.
-                } else {
-                     showStatusMessage("Error", "Please enter a valid value (Steps, Distance, or Time).", true);
-                     return;
-                }
-
-                activeProfileData.activities.push(newActivity);
-                saveData();
-                renderApp();
-                showStatusMessage("Success", `Activity '${newActivity.name}' logged!`);
-                form.reset();
-                updateInputVisibility(); // Reset form visibility and calculations
-                dateInput.value = new Date().toISOString().split('T')[0]; // Reset date to today
-            });
-            
-            // Re-define helper function for submission logic to use Time input consistently
-            function calculatedDistance(activityName, timeInMinutes) {
-                const activityData = ACTIVITY_RATES[activityName];
-                const speedRateKey = activityData ? activityData.speed_rate_key : 'DEFAULT_TIME';
-                const kmPerMin = AVG_SPEED_KM_PER_MIN[speedRateKey];
-                return parseFloat((timeInMinutes * kmPerMin).toFixed(2));
-            }
-        }
-        
-        /**
-         * Sets up the goal setting form.
-         */
-        function setupGoalForm() {
-            document.getElementById('steps-goal-form').addEventListener('submit', (e) => {
-                e.preventDefault();
-                if (!activeProfileId) {
-                    showStatusMessage("Error", "Please log in to set a goal.", true);
-                    return;
-                }
-                
-                const newGoal = parseInt(document.getElementById('new-steps-goal').value);
-                if (newGoal > 0) {
-                    activeProfileData.dailyGoal = newGoal;
-                    saveData();
-                    renderApp();
-                    showStatusMessage("Success", `Daily steps goal set to ${newGoal.toLocaleString()}!`);
-                } else {
-                    showStatusMessage("Error", "Please enter a valid goal.", true);
-                }
-            });
-        }
-        
-        /**
-         * Sets up the activity log clear button.
-         */
-        function setupClearLog() {
-             document.getElementById('clear-log-btn').addEventListener('click', () => {
-                if (!activeProfileId) {
-                    showStatusMessage("Error", "No active profile log to clear.", true);
-                    return;
-                }
-                
-                if (window.confirm("Are you sure you want to clear ALL activity logs for the current profile? This cannot be undone.")) {
-                    activeProfileData.activities = [];
-                    saveData();
-                    renderApp();
-                    showStatusMessage("Success", "All activities have been cleared.");
-                } else {
-                    showStatusMessage("Cancelled", "Activity log clear cancelled.");
-                }
-            });
-            
-             // Delegation for individual activity deletion
-            document.getElementById('activity-list').addEventListener('click', (e) => {
-                const deleteButton = e.target.closest('.delete-activity-btn');
-                if (deleteButton) {
-                    const index = parseInt(deleteButton.dataset.index);
-                    if (index >= 0 && index < activeProfileData.activities.length) {
-                        if (window.confirm("Are you sure you want to delete this activity?")) {
-                            activeProfileData.activities.splice(index, 1);
-                            saveData();
-                            renderApp();
-                            showStatusMessage("Deleted", "Activity removed from log.");
+                        y: { 
+                            beginAtZero: true, 
+                            title: { display: true, text: 'Number of Steps', color: '#9ca3af' },
+                            ticks: { color: '#9ca3af' }, grid: { color: 'rgba(156, 163, 175, 0.2)' } 
+                        },
+                        x: { 
+                            title: { display: true, text: 'Day of the Week', color: '#9ca3af' },
+                            ticks: { color: '#9ca3af' }, grid: { color: 'rgba(156, 163, 175, 0.1)' } 
                         }
                     }
                 }
             });
         }
         
-        // --- Particle System Logic ---
+        /**
+         * Renders the activity frequency horizontal bar chart.
+         */
+        function renderActivityChart(chartData) {
+            const ctx = document.getElementById('activity-chart').getContext('2d');
+             if (activityChart) {
+                activityChart.destroy();
+            }
 
-        function generateParticles() {
+            activityChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: chartData.labels,
+                    datasets: [{
+                        label: 'Times Logged This Week',
+                        data: chartData.data,
+                        backgroundColor: 'rgba(52, 211, 153, 0.6)',
+                        borderColor: 'rgba(52, 211, 153, 1)',
+                        borderWidth: 1,
+                    }]
+                },
+                options: {
+                    indexAxis: 'y', // This makes it a horizontal bar chart
+                    responsive: true,
+                    plugins: { legend: { display: false }, tooltip: { backgroundColor: '#1f2937' } },
+                    scales: {
+                        x: { 
+                            beginAtZero: true, 
+                            title: { display: true, text: 'Number of Times Logged', color: '#9ca3af' },
+                            ticks: { color: '#9ca3af', stepSize: 1 }, // Ensure whole numbers for ticks
+                            grid: { color: 'rgba(156, 163, 175, 0.2)' }
+                        },
+                        y: { 
+                            title: { display: true, text: 'Activity', color: '#9ca3af' },
+                            ticks: { color: '#9ca3af' }, 
+                            grid: { display: false } // Hide vertical grid lines for clarity
+                        }
+                    }
+                }
+            });
+        }
+        
+        /**
+         * Renders the weekly calories line chart.
+         */
+        function renderCaloriesChart(chartData) {
+            const ctx = document.getElementById('calories-chart').getContext('2d');
+            if (caloriesChart) {
+                caloriesChart.destroy();
+            }
+
+            caloriesChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: chartData.labels,
+                    datasets: [{
+                        label: 'Calories Burned per Day',
+                        data: chartData.data,
+                        backgroundColor: 'rgba(239, 68, 68, 0.2)',
+                        borderColor: 'rgba(239, 68, 68, 1)',
+                        borderWidth: 2,
+                        tension: 0.3,
+                        pointBackgroundColor: 'rgba(239, 68, 68, 1)',
+                        pointRadius: 4,
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: { legend: { display: false }, tooltip: { backgroundColor: '#1f2937' } },
+                    scales: {
+                        y: { 
+                            beginAtZero: true, 
+                            title: { display: true, text: 'Calories Burned (kcal)', color: '#9ca3af' },
+                            ticks: { color: '#9ca3af' }, grid: { color: 'rgba(156, 163, 175, 0.2)' } 
+                        },
+                        x: { 
+                            title: { display: true, text: 'Day of the Week', color: '#9ca3af' },
+                            ticks: { color: '#9ca3af' }, grid: { color: 'rgba(156, 163, 175, 0.1)' } 
+                        }
+                    }
+                }
+            });
+        }
+        
+        /**
+         * Main function to update all charts in the Analytics view.
+         */
+        function renderAnalytics() {
+            const stepsData = getWeeklyStepsData();
+            renderStepsChart(stepsData);
+            
+            const activityData = getActivityFrequencyData();
+            renderActivityChart(activityData);
+            
+            const caloriesData = getWeeklyCaloriesData();
+            renderCaloriesChart(caloriesData);
+        }
+
+        /**
+         * MODIFIED: Main render function now also calls chart rendering.
+         */
+        function renderApp() {
+            renderProfileView(); // Always render profile view as it contains active user display
+            
+            const analyticsContent = document.getElementById('analytics-content');
+            const analyticsPrompt = document.getElementById('analytics-login-prompt');
+            
+            if (activeProfileId) {
+                const metrics = calculateMetrics();
+                updateMetricCards(metrics);
+                updateDailyGoalCard(metrics);
+                renderActivityLog();
+                
+                // Render analytics if user is logged in
+                analyticsContent.classList.remove('hidden');
+                analyticsPrompt.classList.add('hidden');
+                renderAnalytics();
+
+            } else {
+                // If no profile is active, clear/reset dashboard displays
+                document.getElementById('metric-cards').innerHTML = '<p class="col-span-full text-center text-gray-500 p-8">Log in to view your dashboard metrics.</p>';
+                
+                // Only try to update the goal card if the elements exist
+                const progressPercent = document.getElementById('progress-percent');
+                const currentGoal = document.getElementById('current-goal');
+                const currentSteps = document.getElementById('current-steps');
+
+                if (progressPercent) progressPercent.textContent = '0%';
+                if (currentGoal) currentGoal.textContent = 'N/A';
+                if (currentSteps) currentSteps.textContent = 'N/A';
+                
+                document.getElementById('activity-list').innerHTML = '<tr><td colspan="6" class="p-4 text-center text-gray-500">No activities logged yet for this profile.</td></tr>';
+
+                // Hide analytics and show login prompt
+                analyticsContent.classList.add('hidden');
+                analyticsPrompt.classList.remove('hidden');
+            }
+        }
+
+        // --- Event Handlers & Core Logic ---
+
+        /**
+         * Sets up listeners for the profile forms.
+         */
+        function setupProfileForms() {
+            // Create Profile Form
+            document.getElementById('create-profile-form').addEventListener('submit', (e) => {
+                e.preventDefault();
+                const formData = new FormData(e.target);
+                const data = Object.fromEntries(formData.entries());
+
+                const name = data.name.trim();
+
+                if (name) {
+                     // Check for duplicate profile name (simple validation)
+                    if (profiles.some(p => p.name.toLowerCase() === name.toLowerCase())) {
+                        showStatusMessage("Error", `A profile named '${name}' already exists.`, true);
+                        return;
+                    }
+                    
+                    // Call createProfile with the collected form data object
+                    createProfile(data); 
+                    
+                    // Reset form fields
+                    e.target.reset();
+                    // Manually reset select to placeholder
+                    document.getElementById('new-profile-gender').value = ''; 
+                } else {
+                    showStatusMessage("Error", "Profile name cannot be empty.", true);
+                }
+            });
+            
+            // Update Profile Form
+            document.getElementById('update-profile-form').addEventListener('submit', (e) => {
+                e.preventDefault();
+                 if (!activeProfileId) {
+                    showStatusMessage("Login Required", "Please log in to update your profile.", true);
+                    return;
+                }
+                const formData = new FormData(e.target);
+                const data = Object.fromEntries(formData.entries());
+                updateProfileDetails(data);
+            });
+            
+            // Delete Profile Button Listener
+            document.getElementById('delete-profile-btn').addEventListener('click', () => {
+                 if (!activeProfileId) {
+                    showStatusMessage("Login Required", "No active profile to delete.", true);
+                    return;
+                }
+                deleteProfile(activeProfileId);
+            });
+        }
+
+
+        /**
+         * Sets up listeners for the manual activity entry form.
+         */
+        function setupManualEntry() {
+            const form = document.getElementById('manual-entry-form');
+            const nameSelect = document.getElementById('activity-name'); 
+            const typeSelect = document.getElementById('activity-type');
+            
+            const stepInputDiv = document.getElementById('step-input');
+            const distanceInputDiv = document.getElementById('distance-input');
+            const timeInputDiv = document.getElementById('time-input');
+
+            const activityStepsInput = document.getElementById('activity-steps');
+            const activityDistanceInput = document.getElementById('activity-distance');
+            const activityTimeInput = document.getElementById('activity-time');
+            
+            // Set today's date as default
+            document.getElementById('activity-date').value = new Date().toISOString().split('T')[0];
+
+            // 1. Populate Activity Name Dropdown
+            Object.keys(ACTIVITY_RATES).forEach(name => {
+                const option = document.createElement('option');
+                option.value = name;
+                option.textContent = name;
+                nameSelect.appendChild(option);
+            });
+            
+            /**
+             * Updates the measurement type based on the selected activity.
+             */
+            function syncMeasurementType(activityName) {
+                const rateData = ACTIVITY_RATES[activityName];
+                if (!rateData) return;
+                
+                // Set the 'Measure By' dropdown to match the activity's rate type
+                typeSelect.value = rateData.rate_type;
+                
+                // Get the label for the correct input field
+                const label = document.querySelector(`#${rateData.rate_type}-input label`);
+                if (label) {
+                    label.textContent = rateData.measure_label;
+                }
+                
+                // Trigger the visibility change and calorie update
+                typeSelect.dispatchEvent(new Event('change'));
+            }
+
+            // 2. Event Listeners for Dynamic Updates
+
+            // A. Activity Name Change: Syncs the Measure By dropdown and triggers UI update
+            nameSelect.addEventListener('change', () => {
+                const selectedActivity = nameSelect.value;
+                if(selectedActivity) {
+                    syncMeasurementType(selectedActivity);
+                } else {
+                    // Fallback to default time if no activity is selected (shouldn't happen with required attribute)
+                    typeSelect.value = 'time';
+                    typeSelect.dispatchEvent(new Event('change'));
+                }
+            });
+            
+            // B. Measure Type Change: Toggles visibility and required fields
+            typeSelect.addEventListener('change', () => {
+                // Hide all and remove required attributes
+                stepInputDiv.classList.add('hidden');
+                distanceInputDiv.classList.add('hidden');
+                timeInputDiv.classList.add('hidden');
+                activityStepsInput.removeAttribute('required');
+                activityDistanceInput.removeAttribute('required');
+                activityTimeInput.removeAttribute('required');
+                
+                const selectedType = typeSelect.value;
+                
+                // Show only the selected input and set it as required
+                let inputEl;
+                if (selectedType === 'steps') {
+                    stepInputDiv.classList.remove('hidden');
+                    inputEl = activityStepsInput;
+                } else if (selectedType === 'distance') {
+                    distanceInputDiv.classList.remove('hidden');
+                    inputEl = activityDistanceInput;
+                } else if (selectedType === 'time') {
+                    timeInputDiv.classList.remove('hidden');
+                    inputEl = activityTimeInput;
+                }
+                
+                if(inputEl) {
+                    inputEl.setAttribute('required', 'required');
+                }
+                
+                // Update displays immediately after type change
+                updateCaloriesDisplay();
+            });
+
+            // C. Measurement Input Changes: Updates the calculated metrics display
+            [activityStepsInput, activityDistanceInput, activityTimeInput].forEach(input => {
+                input.addEventListener('input', updateCaloriesDisplay);
+            });
+            
+            // D. Initial setup on load
+            nameSelect.dispatchEvent(new Event('change'));
+
+
+            // 3. Handle form submission
+            form.addEventListener('submit', (e) => {
+                e.preventDefault();
+                
+                if (!activeProfileId) {
+                    showStatusMessage("Login Required", "Please log in or create a profile first.", true);
+                    handleNavigation('profile-view');
+                    return;
+                }
+                
+                logActivity(form);
+            });
+        }
+        
+        /**
+         * Processes and logs a new activity.
+         */
+        function logActivity(form) {
+            const formData = new FormData(form);
+            const data = Object.fromEntries(formData.entries());
+            
+            // Get calculated values from the display elements
+            const calculatedCalories = parseInt(document.getElementById('activity-calories-display').dataset.calories);
+            const calculatedSteps = parseInt(document.getElementById('activity-calculated-steps').dataset.steps);
+            const calculatedTime = parseInt(document.getElementById('activity-calculated-time').dataset.time); // NEW
+
+            // Basic validation check
+            if (calculatedCalories <= 0) {
+                 showStatusMessage("Validation Error", "Please enter a positive value for your activity duration/distance/steps.", true);
+                return;
+            }
+
+            // Determine final steps/distance/time value to log based on input type
+            let finalSteps = 0;
+            let finalDistance = 0;
+            let finalTime = 0;
+
+            if (data.type === 'steps') {
+                finalSteps = parseInt(data.steps) || 0;
+                // Use the calculated distance/time derived from the steps
+                finalDistance = finalSteps * STEPS_TO_KM_RATE; 
+                finalTime = calculatedTime; 
+            } else if (data.type === 'distance') {
+                finalDistance = parseFloat(data.distance) || 0;
+                // Use the calculated steps/time derived from the distance
+                finalSteps = calculatedSteps; 
+                finalTime = calculatedTime;
+            } else { // time
+                finalTime = parseInt(data.time) || 0;
+                // Steps and distance remain 0 for raw time entries
+                finalSteps = 0;
+                finalDistance = 0;
+            }
+
+
+            const newActivity = {
+                id: Date.now(), 
+                name: data.name,
+                type: data.type,
+                // Log the final calculated/entered values
+                time: finalTime,
+                distance: finalDistance,
+                steps: finalSteps, 
+                calories: calculatedCalories, // Use the calculated value
+                date: data.date
+            };
+
+
+            activeProfileData.activities.push(newActivity); // Log to active profile
+            saveData(); // Save all data
+            renderApp();
+            resetManualEntryForm();
+            showStatusMessage("Success", `${newActivity.name} logged successfully with ${newActivity.calories} kcal burned!`);
+            handleNavigation('dashboard-view');
+        }
+
+        /**
+         * Clears the manual entry form fields.
+         */
+        function resetManualEntryForm() {
+            // Select default values
+            document.getElementById('activity-name').value = Object.keys(ACTIVITY_RATES)[0]; // First activity in list
+            document.getElementById('activity-type').value = 'time';
+            
+            // Clear inputs
+            document.getElementById('activity-steps').value = '';
+            document.getElementById('activity-distance').value = '';
+            document.getElementById('activity-time').value = '30';
+            
+            // Reset date to today
+            document.getElementById('activity-date').value = new Date().toISOString().split('T')[0];
+            
+            // Trigger updates to re-sync display
+            document.getElementById('activity-name').dispatchEvent(new Event('change'));
+        }
+
+        /**
+         * Deletes an activity by its ID from the active profile's data.
+         */
+        function deleteActivity(id) {
+            const activities = activeProfileData.activities;
+            const activityIndex = activities.findIndex(act => act.id === id);
+            
+             const profileName = profiles.find(p => p.id === activeProfileId)?.name || 'this profile';
+             if (!window.confirm(`Are you sure you want to delete this activity from ${profileName}'s log?`)) {
+                showStatusMessage("Cancelled", "Activity deletion cancelled.");
+                return;
+            }
+
+            if (activityIndex !== -1) {
+                const activityName = activities[activityIndex].name;
+                activeProfileData.activities = activities.filter(act => act.id !== id);
+                saveData();
+                renderApp();
+                showStatusMessage("Deleted", `Activity '${activityName}' removed.`);
+            } else {
+                showStatusMessage("Error", "Activity not found.", true);
+            }
+        }
+
+        /**
+         * Sets up listeners for the steps goal form.
+         */
+        function setupGoalForm() {
+            const form = document.getElementById('steps-goal-form');
+            form.addEventListener('submit', (e) => {
+                e.preventDefault();
+                
+                if (!activeProfileId) {
+                    showStatusMessage("Login Required", "Please log in or create a profile first.", true);
+                    handleNavigation('profile-view');
+                    return;
+                }
+
+                const newGoalInput = document.getElementById('new-steps-goal');
+                const newGoal = parseInt(newGoalInput.value, 10);
+                
+                if (newGoal >= 1000) {
+                    activeProfileData.dailyGoal = newGoal; // Update active profile data
+                    saveData(); // Save all data
+                    renderApp();
+                    newGoalInput.value = ''; // Clear input
+                    showStatusMessage("Success", `Daily steps goal updated to ${newGoal.toLocaleString()}.`);
+                } else {
+                    showStatusMessage("Error", "Goal must be at least 1,000 steps.", true);
+                }
+            });
+        }
+        
+        /**
+         * Sets up listeners for navigation buttons.
+         */
+        function setupNavigation() {
+            document.querySelectorAll('.nav-link').forEach(link => {
+                link.addEventListener('click', () => {
+                    // Check if an attempt is made to leave the profile view without a user
+                    if (!activeProfileId && link.dataset.view !== 'profile-view') {
+                        showStatusMessage("Access Denied", "Please create or select a profile first.", true);
+                        handleNavigation('profile-view');
+                    } else {
+                        handleNavigation(link.dataset.view);
+                    }
+                });
+            });
+            // Ensure dashboard is active on load or switch to profile if needed
+             const initialView = activeProfileId ? 'dashboard-view' : 'profile-view';
+             handleNavigation(initialView);
+        }
+
+        /**
+         * Sets up listener for clearing the activity log.
+         */
+        function setupClearLog() {
+            document.getElementById('clear-log-btn').addEventListener('click', () => {
+                if (!activeProfileId) {
+                    showStatusMessage("Login Required", "Please log in or create a profile first.", true);
+                    handleNavigation('profile-view');
+                    return;
+                }
+                
+                const profileName = profiles.find(p => p.id === activeProfileId)?.name || 'this profile';
+                if (window.confirm(`Are you absolutely sure you want to clear ALL activity data for profile: ${profileName}? This cannot be undone.`)) {
+                    activeProfileData.activities = [];
+                    saveData(); // Clear and save
+                    renderApp();
+                    showStatusMessage("Log Cleared", `All activities for profile '${profileName}' have been removed.`);
+                } else {
+                    showStatusMessage("Cancelled", "Activity log clear operation cancelled.");
+                }
+            });
+        }
+
+        // --- Particle Generation Logic ---
+        
+        /**
+         * Generates and places floating background particles.
+         */
+        function generateParticles(count = 150) { 
             const container = document.getElementById('particles-container');
-            const count = 50; // Number of particles
-            const duration = 20; // Animation duration in seconds (for flow and fade)
-
+            if (!container) return;
+            
             for (let i = 0; i < count; i++) {
                 const particle = document.createElement('div');
-                particle.className = 'particle';
-
-                // Random size (2px to 8px)
-                const size = Math.random() * 6 + 2; 
+                particle.classList.add('particle');
+                
+                // Random size (3px to 8px)
+                const size = Math.random() * 5 + 3;
                 particle.style.width = `${size}px`;
                 particle.style.height = `${size}px`;
-
+                
                 // Random start position
-                particle.style.left = `${Math.random() * 100}vw`;
-                particle.style.top = `${Math.random() * 100}vh`;
+                particle.style.left = `${Math.random() * 100}%`;
+                particle.style.top = `${Math.random() * 100}%`;
 
-                // Random animation duration and delay (staggering the animation)
-                particle.style.animationDuration = `${duration + Math.random() * 10}s`;
+                // Random animation duration (20s to 60s for flow, half for fade)
+                const duration = Math.random() * 40 + 20;
+                particle.style.animationDuration = `${duration}s, ${duration / 2}s`;
+                
+                // Random animation delay (start at a random point in the animation cycle)
                 particle.style.animationDelay = `-${Math.random() * duration}s, -${Math.random() * duration}s`;
 
                 // Random flow offsets (for the CSS variable in the flow keyframe)
@@ -1488,37 +1772,25 @@
 
         /**
          * The main initialization function for the app.
-         * CRITICAL FIX: Added a global try/catch block to ensure the app loads even if data is corrupted.
          */
         function initApp() {
-            try {
-                loadData(); // Load all data from localStorage first
-                setupProfileForms();
-                setupNavigation();
-                setupManualEntry();
-                setupGoalForm();
-                setupClearLog();
-                generateParticles();
-                
-                // Apply initial dark mode styling to static cards
-                document.querySelector('.daily-goal-card').classList.add('bg-white/10', 'backdrop-blur-md', 'border-purple-500/30', 'border');
-                document.querySelector('.activity-log-card').classList.add('bg-white/10', 'backdrop-blur-md', 'border-blue-500/30', 'border');
-                
-            } catch (e) {
-                console.error("CRITICAL APP INITIALIZATION ERROR. Resetting state and forcing render.", e);
-                // Force state reset in case loadData didn't catch the error
-                profiles = [];
-                activeProfileId = null;
-                activeProfileData = { activities: [], dailyGoal: 10000 };
-                // Notify user that their data was corrupted and reset.
-                showStatusMessage("CRITICAL ERROR", "Corrupted data detected. Application state was reset. Please create a new profile.", true);
-            }
+            loadData(); // Load all data from localStorage first
+            setupProfileForms();
+            setupNavigation();
+            setupManualEntry();
+            setupGoalForm();
+            setupClearLog();
+            generateParticles();
             
-            renderApp(); // Always attempt to render the UI with the latest (possibly reset) data
+            // Apply initial dark mode styling to static cards
+            document.querySelector('.daily-goal-card').classList.add('bg-white/10', 'backdrop-blur-md', 'border-purple-500/30', 'border');
+            document.querySelector('.activity-log-card').classList.add('bg-white/10', 'backdrop-blur-md', 'border-blue-500/30', 'border');
+            
+            renderApp(); // Render the UI with the loaded data
         }
 
-        // Initialize the application when the DOM is fully loaded
-        document.addEventListener('DOMContentLoaded', initApp);
+        // Initialize the application when the window loads
+        window.onload = initApp;
     </script>
 </body>
 </html>
