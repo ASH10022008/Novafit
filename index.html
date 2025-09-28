@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>NovaFit Tracker - Dashboard</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
         body {
@@ -154,6 +155,7 @@
             </h1>
             <nav class="mt-4 sm:mt-0 flex space-x-2 sm:space-x-4">
                 <button id="nav-dashboard" data-view="dashboard-view" class="nav-link px-4 py-2 rounded-full text-sm font-medium hover:bg-purple-700/30 transition active">Dashboard</button>
+                <button id="nav-analytics" data-view="analytics-view" class="nav-link px-4 py-2 rounded-full text-sm font-medium hover:bg-purple-700/30 transition">Analytics</button>
                 <button id="nav-log" data-view="log-activity-view" class="nav-link px-4 py-2 rounded-full text-sm font-medium hover:bg-purple-700/30 transition">Log Activity</button>
                 <button id="nav-goals" data-view="goals-view" class="nav-link px-4 py-2 rounded-full text-sm font-medium hover:bg-purple-700/30 transition">Goals</button>
                 <button id="nav-profile" data-view="profile-view" class="nav-link px-4 py-2 rounded-full text-sm font-medium hover:bg-purple-700/30 transition">Profile</button>
@@ -293,6 +295,30 @@
             </div>
         </section>
 
+        <section id="analytics-view" class="view-section">
+            <h2 class="text-2xl font-semibold mb-6 text-purple-300">Weekly Analytics</h2>
+            
+            <div id="analytics-content" class="grid grid-cols-1 xl:grid-cols-2 gap-8">
+                <div class="bg-gray-800/50 p-6 rounded-2xl shadow-xl border border-yellow-500/30">
+                    <h3 class="text-xl font-bold mb-4 text-yellow-300">Weekly Steps Tracker</h3>
+                    <canvas id="steps-chart"></canvas>
+                </div>
+
+                <div class="bg-gray-800/50 p-6 rounded-2xl shadow-xl border border-green-500/30">
+                    <h3 class="text-xl font-bold mb-4 text-green-300">Activity Frequency</h3>
+                    <canvas id="activity-chart"></canvas>
+                </div>
+
+                <div class="bg-gray-800/50 p-6 rounded-2xl shadow-xl border border-red-500/30 xl:col-span-2">
+                    <h3 class="text-xl font-bold mb-4 text-red-300">Weekly Calorie Burn</h3>
+                    <canvas id="calories-chart"></canvas>
+                </div>
+            </div>
+             <div id="analytics-login-prompt" class="hidden text-center p-8">
+                <p class="text-gray-500">Log in to view your analytics.</p>
+            </div>
+        </section>
+
         <section id="log-activity-view" class="view-section">
             <h2 class="text-2xl font-semibold mb-6 text-purple-300">Log New Activity</h2>
             <form id="manual-entry-form" class="max-w-xl mx-auto bg-gray-800/50 p-6 rounded-xl shadow-inner border border-purple-500/30">
@@ -427,6 +453,9 @@
         let profiles = [];
         let activeProfileId = null;
         let activeProfileData = { activities: [], dailyGoal: 10000 };
+        
+        // ADDED: Global chart instances
+        let stepsChart, activityChart, caloriesChart;
 
         // --- Activity Definitions and Calorie Rates (Simplified for Demo) ---
         // Note: Added a 'speed_rate_key' to link to the AVG_SPEED_KM_PER_MIN
@@ -1081,17 +1110,252 @@
             }
         }
         
+        // --- ADDED: Chart Data Processing Functions ---
+
         /**
-         * Main render function that calls all sub-renders.
+         * Processes activities from the last 7 days to get total steps per day of the week.
+         */
+        function getWeeklyStepsData() {
+            const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+            const data = Array(7).fill(0);
+            const today = new Date();
+            const sevenDaysAgo = new Date();
+            sevenDaysAgo.setDate(today.getDate() - 6); // Look at today + the past 6 days
+            sevenDaysAgo.setHours(0,0,0,0);
+
+            activeProfileData.activities.forEach(act => {
+                const activityDate = new Date(act.date + 'T00:00:00'); // Ensure local timezone
+                if (activityDate >= sevenDaysAgo) {
+                    const dayIndex = activityDate.getDay();
+                    data[dayIndex] += act.steps;
+                }
+            });
+
+            // Rotate array so today is the last day
+            const dayOfWeek = today.getDay();
+            const rotatedDays = [...days.slice(dayOfWeek + 1), ...days.slice(0, dayOfWeek + 1)];
+            const rotatedData = [...data.slice(dayOfWeek + 1), ...data.slice(0, dayOfWeek + 1)];
+
+            return { labels: rotatedDays, data: rotatedData };
+        }
+        
+        /**
+         * Processes activities from the last 7 days to get total calories per day of the week.
+         */
+        function getWeeklyCaloriesData() {
+            const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+            const data = Array(7).fill(0);
+            const today = new Date();
+            const sevenDaysAgo = new Date();
+            sevenDaysAgo.setDate(today.getDate() - 6);
+            sevenDaysAgo.setHours(0,0,0,0);
+
+            activeProfileData.activities.forEach(act => {
+                const activityDate = new Date(act.date + 'T00:00:00');
+                if (activityDate >= sevenDaysAgo) {
+                    const dayIndex = activityDate.getDay();
+                    data[dayIndex] += act.calories;
+                }
+            });
+            
+            // Rotate array so today is the last day
+            const dayOfWeek = today.getDay();
+            const rotatedDays = [...days.slice(dayOfWeek + 1), ...days.slice(0, dayOfWeek + 1)];
+            const rotatedData = [...data.slice(dayOfWeek + 1), ...data.slice(0, dayOfWeek + 1)];
+
+            return { labels: rotatedDays, data: rotatedData };
+        }
+        
+        /**
+         * Counts the frequency of each activity logged in the current week.
+         */
+        function getActivityFrequencyData() {
+            const counts = {};
+            const today = new Date();
+            const sevenDaysAgo = new Date();
+            sevenDaysAgo.setDate(today.getDate() - 6);
+            sevenDaysAgo.setHours(0,0,0,0);
+            
+            activeProfileData.activities.forEach(act => {
+                const activityDate = new Date(act.date + 'T00:00:00');
+                if (activityDate >= sevenDaysAgo) {
+                    counts[act.name] = (counts[act.name] || 0) + 1;
+                }
+            });
+            
+            // Sort by count descending
+            const sortedActivities = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+            
+            const labels = sortedActivities.map(entry => entry[0]);
+            const data = sortedActivities.map(entry => entry[1]);
+
+            return { labels, data };
+        }
+        
+        // --- ADDED: Chart Rendering Functions ---
+
+        /**
+         * Renders the weekly steps line chart.
+         */
+        function renderStepsChart(chartData) {
+            const ctx = document.getElementById('steps-chart').getContext('2d');
+            
+            // Destroy previous chart instance if it exists to prevent flickering
+            if (stepsChart) {
+                stepsChart.destroy();
+            }
+
+            stepsChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: chartData.labels,
+                    datasets: [{
+                        label: 'Steps per Day',
+                        data: chartData.data,
+                        backgroundColor: 'rgba(251, 191, 36, 0.2)',
+                        borderColor: 'rgba(251, 191, 36, 1)',
+                        borderWidth: 2,
+                        tension: 0.3,
+                        pointBackgroundColor: 'rgba(251, 191, 36, 1)',
+                        pointRadius: 4,
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: { legend: { display: false }, tooltip: { backgroundColor: '#1f2937' } },
+                    scales: {
+                        y: { 
+                            beginAtZero: true, 
+                            title: { display: true, text: 'Number of Steps', color: '#9ca3af' },
+                            ticks: { color: '#9ca3af' }, grid: { color: 'rgba(156, 163, 175, 0.2)' } 
+                        },
+                        x: { 
+                            title: { display: true, text: 'Day of the Week', color: '#9ca3af' },
+                            ticks: { color: '#9ca3af' }, grid: { color: 'rgba(156, 163, 175, 0.1)' } 
+                        }
+                    }
+                }
+            });
+        }
+        
+        /**
+         * Renders the activity frequency horizontal bar chart.
+         */
+        function renderActivityChart(chartData) {
+            const ctx = document.getElementById('activity-chart').getContext('2d');
+             if (activityChart) {
+                activityChart.destroy();
+            }
+
+            activityChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: chartData.labels,
+                    datasets: [{
+                        label: 'Times Logged This Week',
+                        data: chartData.data,
+                        backgroundColor: 'rgba(52, 211, 153, 0.6)',
+                        borderColor: 'rgba(52, 211, 153, 1)',
+                        borderWidth: 1,
+                    }]
+                },
+                options: {
+                    indexAxis: 'y', // This makes it a horizontal bar chart
+                    responsive: true,
+                    plugins: { legend: { display: false }, tooltip: { backgroundColor: '#1f2937' } },
+                    scales: {
+                        x: { 
+                            beginAtZero: true, 
+                            title: { display: true, text: 'Number of Times Logged', color: '#9ca3af' },
+                            ticks: { color: '#9ca3af', stepSize: 1 }, // Ensure whole numbers for ticks
+                            grid: { color: 'rgba(156, 163, 175, 0.2)' }
+                        },
+                        y: { 
+                            title: { display: true, text: 'Activity', color: '#9ca3af' },
+                            ticks: { color: '#9ca3af' }, 
+                            grid: { display: false } // Hide vertical grid lines for clarity
+                        }
+                    }
+                }
+            });
+        }
+        
+        /**
+         * Renders the weekly calories line chart.
+         */
+        function renderCaloriesChart(chartData) {
+            const ctx = document.getElementById('calories-chart').getContext('2d');
+            if (caloriesChart) {
+                caloriesChart.destroy();
+            }
+
+            caloriesChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: chartData.labels,
+                    datasets: [{
+                        label: 'Calories Burned per Day',
+                        data: chartData.data,
+                        backgroundColor: 'rgba(239, 68, 68, 0.2)',
+                        borderColor: 'rgba(239, 68, 68, 1)',
+                        borderWidth: 2,
+                        tension: 0.3,
+                        pointBackgroundColor: 'rgba(239, 68, 68, 1)',
+                        pointRadius: 4,
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: { legend: { display: false }, tooltip: { backgroundColor: '#1f2937' } },
+                    scales: {
+                        y: { 
+                            beginAtZero: true, 
+                            title: { display: true, text: 'Calories Burned (kcal)', color: '#9ca3af' },
+                            ticks: { color: '#9ca3af' }, grid: { color: 'rgba(156, 163, 175, 0.2)' } 
+                        },
+                        x: { 
+                            title: { display: true, text: 'Day of the Week', color: '#9ca3af' },
+                            ticks: { color: '#9ca3af' }, grid: { color: 'rgba(156, 163, 175, 0.1)' } 
+                        }
+                    }
+                }
+            });
+        }
+        
+        /**
+         * Main function to update all charts in the Analytics view.
+         */
+        function renderAnalytics() {
+            const stepsData = getWeeklyStepsData();
+            renderStepsChart(stepsData);
+            
+            const activityData = getActivityFrequencyData();
+            renderActivityChart(activityData);
+            
+            const caloriesData = getWeeklyCaloriesData();
+            renderCaloriesChart(caloriesData);
+        }
+
+        /**
+         * MODIFIED: Main render function now also calls chart rendering.
          */
         function renderApp() {
             renderProfileView(); // Always render profile view as it contains active user display
+            
+            const analyticsContent = document.getElementById('analytics-content');
+            const analyticsPrompt = document.getElementById('analytics-login-prompt');
             
             if (activeProfileId) {
                 const metrics = calculateMetrics();
                 updateMetricCards(metrics);
                 updateDailyGoalCard(metrics);
                 renderActivityLog();
+                
+                // Render analytics if user is logged in
+                analyticsContent.classList.remove('hidden');
+                analyticsPrompt.classList.add('hidden');
+                renderAnalytics();
+
             } else {
                 // If no profile is active, clear/reset dashboard displays
                 document.getElementById('metric-cards').innerHTML = '<p class="col-span-full text-center text-gray-500 p-8">Log in to view your dashboard metrics.</p>';
@@ -1106,6 +1370,10 @@
                 if (currentSteps) currentSteps.textContent = 'N/A';
                 
                 document.getElementById('activity-list').innerHTML = '<tr><td colspan="6" class="p-4 text-center text-gray-500">No activities logged yet for this profile.</td></tr>';
+
+                // Hide analytics and show login prompt
+                analyticsContent.classList.add('hidden');
+                analyticsPrompt.classList.remove('hidden');
             }
         }
 
